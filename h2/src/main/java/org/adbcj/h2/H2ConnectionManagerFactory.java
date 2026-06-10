@@ -1,7 +1,7 @@
 package org.adbcj.h2;
 
 import org.adbcj.ConnectionManager;
-import org.adbcj.ConnectionManagerFactory;
+import org.adbcj.support.ConnectionManagerFactory;
 import org.adbcj.DbException;
 import org.adbcj.support.LoginCredentials;
 
@@ -9,9 +9,6 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
 public class H2ConnectionManagerFactory implements ConnectionManagerFactory {
     private static final String PROTOCOL = "h2";
     private static final int DEFAULT_PORT = 8082;

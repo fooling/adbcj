@@ -3,6 +3,7 @@ package org.adbcj.tck;
 import org.adbcj.jdbc.PlainJDBCConnection;
 import org.testng.Assert;
 import org.testng.annotations.AfterSuite;
+import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Parameters;
 
@@ -21,10 +22,7 @@ public abstract class InitDatabase {
     protected InitDatabase() {
     }
 
-    @Parameters({"jdbcUrl", "user", "password"})
-    @BeforeTest
     public final void prepareMySQL(String url, String user, String password) throws Exception {
-        loadDriver();
         beforeSetupScript(url, user, password);
         runSQLScript(url, user, password, setupScript());
     }
@@ -33,12 +31,8 @@ public abstract class InitDatabase {
 
     }
 
-    protected abstract void loadDriver() throws ClassNotFoundException;
-
     protected abstract String setupScript();
 
-    @Parameters({"jdbcUrl", "user", "password"})
-    @AfterSuite
     public void cleanUp(String jdbcUrl, String user, String password) {
         runSQLScript(jdbcUrl, user, password, tearDownScript());
         afterCleanupScript();
@@ -52,18 +46,13 @@ public abstract class InitDatabase {
 
     private void runSQLScript(String jdbcUrl, String user, String password, String script) {
         try {
-            Connection connection
-                    = new PlainJDBCConnection(jdbcUrl, user, password, new HashMap<String, String>()).getConnection();
-            try {
+            try (Connection connection = new PlainJDBCConnection(jdbcUrl, user, password, new HashMap<>()).getConnection()) {
                 for (String line : setupSQL(script)) {
                     Statement stmt = connection.createStatement();
-                    System.out.println("Prepare: "+line);
                     stmt.execute(line);
                     stmt.close();
 
                 }
-            } finally {
-                connection.close();
             }
         } catch (Exception e) {
             e.printStackTrace();

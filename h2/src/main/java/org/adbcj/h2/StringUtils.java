@@ -1,8 +1,6 @@
 package org.adbcj.h2;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 final class StringUtils {
     private static final char[] HEX = "0123456789abcdef".toCharArray();
     /**

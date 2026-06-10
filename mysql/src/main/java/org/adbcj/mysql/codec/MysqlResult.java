@@ -10,10 +10,7 @@ import org.adbcj.support.DefaultValue;
 import java.util.EnumSet;
 import java.util.List;
 
-/**
- * @author roman.stoffel@gamlor.info
- * @since 10.05.12
- */
+
 public class MysqlResult extends DefaultResult {
     private final ResultSet generatedKeys;
 

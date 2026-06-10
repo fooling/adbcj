@@ -1,8 +1,6 @@
 package org.adbcj.h2.protocol;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public enum CommandCodes {
     SESSION_PREPARE(0),
     SESSION_CLOSE(1),
@@ -17,7 +15,7 @@ public enum CommandCodes {
 
     private final int statusValue;
 
-    private CommandCodes(int statusValue) {
+    CommandCodes(int statusValue) {
         this.statusValue = statusValue;
     }
 

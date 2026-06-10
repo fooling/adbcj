@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 
 public class IoUtilsTest {
 
@@ -64,8 +65,8 @@ public class IoUtilsTest {
         InputStream nativeInputStream = new ByteArrayInputStream(newBytes);
         BoundedInputStream in = new BoundedInputStream(nativeInputStream,newBytes.length+1);
 
-		Assert.assertEquals(IoUtils.readNullTerminatedString(in, "UTF-8"), first);
-		Assert.assertEquals(IoUtils.readNullTerminatedString(in, "UTF-8"), second);
+		Assert.assertEquals(IoUtils.readNullTerminatedString(in, StandardCharsets.UTF_8), first);
+		Assert.assertEquals(IoUtils.readNullTerminatedString(in, StandardCharsets.UTF_8), second);
 	}
 	@Test
 	public void allNullOneByte() throws IOException {

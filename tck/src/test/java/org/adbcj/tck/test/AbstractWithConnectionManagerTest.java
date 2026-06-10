@@ -3,35 +3,55 @@ package org.adbcj.tck.test;
 import org.adbcj.CloseMode;
 import org.adbcj.ConnectionManager;
 import org.adbcj.ConnectionManagerProvider;
-import org.adbcj.DbFuture;
+import org.adbcj.StandardProperties;
+import org.adbcj.tck.InitDatabase;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Parameters;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public abstract class AbstractWithConnectionManagerTest {
     protected ConnectionManager connectionManager;
+    private InitDatabase init;
 
-    @Parameters({"url", "user", "password"})
+    @Parameters({"jdbcUrl", "url", "user", "password", "setupClass", "connectionPool"})
     @BeforeClass
-    public void createConnectionManager(String url, String user, String password) {
-        connectionManager = ConnectionManagerProvider.createConnectionManager(url,
+    public void createConnectionManager(String jdbcUrl,
+                                        String url,
+                                        String user,
+                                        String password,
+                                        String setupClass,
+                                        boolean connectionPool) throws Exception {
+        InitDatabase init = (InitDatabase) Class.forName(setupClass).newInstance();
+        init.prepareMySQL(jdbcUrl, user, password);
+        this.init = init;
+        Map<String, String> props = properties();
+        if(connectionPool){
+            props.put(StandardProperties.CONNECTION_POOL_ENABLE, "true");
+        }
+        connectionManager = ConnectionManagerProvider.createConnectionManager(
+                url,
                 user,
-                password, properties());
+                password,
+                props
+                );
     }
 
-    protected Map<String,String> properties(){
-        return new HashMap<String,String>();
+    protected Map<String, String> properties() {
+        return new HashMap<>();
     }
 
+    @Parameters({"jdbcUrl", "user", "password",})
     @AfterClass
-    public void closeConnectionManager() throws InterruptedException {
-        DbFuture<Void> closeFuture = connectionManager.close(CloseMode.CANCEL_PENDING_OPERATIONS);
+    public void closeConnectionManager(String jdbcUrl,
+                                       String user,
+                                       String password) throws Exception {
+        CompletableFuture<Void> closeFuture = connectionManager.close(CloseMode.CANCEL_PENDING_OPERATIONS);
         closeFuture.get();
+        init.cleanUp(jdbcUrl, user, password);
     }
 }

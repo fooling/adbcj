@@ -1,30 +1,31 @@
 package org.adbcj.mysql.codec.decoding;
 
-import org.adbcj.mysql.codec.MySqlConnection;
+import org.adbcj.DbCallback;
+import org.adbcj.mysql.MySqlConnection;
 import org.adbcj.mysql.codec.packets.ErrorResponse;
 import org.adbcj.mysql.codec.packets.OkResponse;
-import org.adbcj.support.DefaultDbFuture;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class ExpectOK<T> extends ResponseStart {
 
-    protected final DefaultDbFuture<T> futureToComplete;
+    protected final DbCallback<T> callback;
+    private final StackTraceElement[] entry;
 
-    public ExpectOK(DefaultDbFuture<T> futureToComplete,MySqlConnection connection) {
+    public ExpectOK(MySqlConnection connection, DbCallback<T> callback, StackTraceElement[] entry) {
         super(connection);
-        this.futureToComplete = futureToComplete;
+        this.callback = sandboxCallback(callback);
+        this.entry = entry;
     }
+
     @Override
     protected ResultAndState handleError(ErrorResponse errorResponse) {
-        futureToComplete.trySetException(errorResponse.toException());
+        callback.onComplete(null, errorResponse.toException(entry));
         return new ResultAndState(new AcceptNextResponse(connection), errorResponse);
     }
 
     @Override
     protected ResultAndState handleOk(OkResponse.RegularOK regularOK) {
-        this.futureToComplete.trySetResult(null);
+        callback.onComplete(null, null);
         return new ResultAndState(new AcceptNextResponse(connection), regularOK);
     }
 }

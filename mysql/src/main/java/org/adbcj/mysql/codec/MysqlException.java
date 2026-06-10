@@ -19,14 +19,14 @@ package org.adbcj.mysql.codec;
 import org.adbcj.DbException;
 
 public class MysqlException extends DbException {
-	private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 1L;
 
-	public MysqlException(String message, Throwable cause) {
-		super( message, cause);
-	}
+    public MysqlException(String message, Throwable cause, StackTraceElement[] entry) {
+        super(message, cause, entry);
+    }
 
-	public MysqlException(String message) {
-		super( message);
-	}
+    public MysqlException(String message) {
+        super(message);
+    }
 
 }

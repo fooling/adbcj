@@ -1,9 +1,8 @@
 package org.adbcj;
 
 /**
- * Standart properties, which can be passed to {@link ConnectionManagerProvider#createConnectionManager}
+ * Standard properties, which can be passed to {@link ConnectionManagerProvider#createConnectionManager}
  * via property map
- * @author roman.stoffel@gamlor.info
  */
 public final class StandardProperties {
     private StandardProperties(){}
@@ -18,6 +17,8 @@ public final class StandardProperties {
      */
     public final static String MAX_QUEUE_LENGTH= "adbcj.maxQueueLength";
 
+    public final static long DEFAULT_QUEUE_LENGTH = 64;
+
     /**
      * ADBCJ allows you to capture the stack trace of the location which issues a request.
      * However this is a expensive operation, so it's optional. You can force a driver to capture
@@ -28,4 +29,13 @@ public final class StandardProperties {
      * This is disabled by default
      */
     public final static String CAPTURE_CALL_STACK= "org.adbcj.debug.capture.callstack";
+
+
+    /**
+     * When set to true, enables the default confection pool.
+     * If a driver does not support a connection pool, it should throw a {@link DbException}.
+     *
+     *
+     */
+    public final static String CONNECTION_POOL_ENABLE= "org.adbcj.connectionpool.enable";
 }

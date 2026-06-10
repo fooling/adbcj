@@ -1,19 +1,15 @@
 package org.adbcj.h2.packets;
 
-import org.adbcj.support.CancellationToken;
-
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class CompoundCommand extends ClientToServerPacket {
     private final ClientToServerPacket[] commands;
 
-    public CompoundCommand(CancellationToken cancelSupport,ClientToServerPacket...commands) {
-        super(cancelSupport);
+    public CompoundCommand(ClientToServerPacket...commands) {
+        super();
         this.commands = commands;
     }
 
@@ -35,7 +31,7 @@ public class CompoundCommand extends ClientToServerPacket {
 
     @Override
     public String toString() {
-        return "Commands{"  + (commands == null ? null : Arrays.asList(commands)) +
+        return "Commands{" + (commands == null ? null : Arrays.asList(commands)) +
                 '}';
     }
 }

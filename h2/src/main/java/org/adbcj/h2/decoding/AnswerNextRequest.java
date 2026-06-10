@@ -1,20 +1,18 @@
 package org.adbcj.h2.decoding;
 
+import io.netty.channel.Channel;
 import org.adbcj.h2.H2Connection;
 import org.adbcj.h2.H2DbException;
 import org.adbcj.h2.Request;
-import io.netty.channel.Channel;
 
 import java.io.DataInputStream;
 import java.io.IOException;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public final class AnswerNextRequest extends StatusReadingDecoder {
 
-    public AnswerNextRequest(H2Connection connection) {
-        super(connection);
+    public AnswerNextRequest(H2Connection connection, StackTraceElement[] entry) {
+        super(connection, entry);
     }
 
     @Override
@@ -31,6 +29,7 @@ public final class AnswerNextRequest extends StatusReadingDecoder {
 
     private ResultAndState handleRequest(DataInputStream stream, Channel channel) throws IOException {
         final Request requestInfo = connection.dequeRequest();
+        assert requestInfo !=null;
         final DecoderState requestDecoder = requestInfo.getStartState();
         stream.reset();
         stream.mark(Integer.MAX_VALUE);

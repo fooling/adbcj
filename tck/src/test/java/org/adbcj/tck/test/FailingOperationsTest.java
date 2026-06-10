@@ -1,28 +1,28 @@
 package org.adbcj.tck.test;
 
-import junit.framework.Assert;
 import org.adbcj.Connection;
 import org.adbcj.DbException;
 import org.adbcj.StandardProperties;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class FailingOperationsTest extends AbstractWithConnectionManagerTest {
 
     @Test
-    public void failingQuery() throws InterruptedException {
+    public void failingQuery() throws Exception {
         Connection connection = connectionManager.connect().get();
-        try{
+        try {
             connection.executeQuery("SELECT invalid query so it will throw").get();
             Assert.fail("Expect failure");
-        }catch (DbException ex){
+        } catch (ExecutionException ex) {
+            Assert.assertTrue(ex.getCause() instanceof DbException);
             boolean foundThisTestInStack = false;
             for (StackTraceElement element : ex.getStackTrace()) {
-                if(element.getMethodName().equals("failingQuery")){
+                if (element.getMethodName().equals("failingQuery")) {
                     foundThisTestInStack = true;
                 }
             }
@@ -35,7 +35,7 @@ public class FailingOperationsTest extends AbstractWithConnectionManagerTest {
     @Override
     protected Map<String, String> properties() {
         final Map<String, String> config = super.properties();
-        config.put(StandardProperties.CAPTURE_CALL_STACK,"true");
+        config.put(StandardProperties.CAPTURE_CALL_STACK, "true");
         return config;
     }
 }

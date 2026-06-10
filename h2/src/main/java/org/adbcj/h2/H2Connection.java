@@ -8,85 +8,94 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class H2Connection implements Connection {
     private static final Logger logger = LoggerFactory.getLogger(H2Connection.class);
     private final String sessionId = StringUtils.convertBytesToHex(MathUtils.secureRandomBytes(32));
     private final ArrayDeque<Request> requestQueue;
+    private final LoginCredentials login;
     private final int maxQueueSize;
     private final H2ConnectionManager manager;
     private final Channel channel;
     private final Object lock = new Object();
-    private volatile DefaultDbFuture<Void> closeFuture;
+    final StackTracingOptions stackTraces;
     private final AtomicInteger requestId = new AtomicInteger(0);
     private final int autoIdSession = nextId();
     private final int commitIdSession = nextId();
     private final int rollbackIdSession = nextId();
-    private BlockingRequestInProgress blockingRequest;
+    /**
+     * {@see BlockingRequestInProgress} for explanation
+     */
+    BlockingRequestInProgress blockingRequest;
 
     private volatile boolean isInTransaction = false;
+    private final CloseOnce closer = new CloseOnce();
 
     private final RequestCreator requestCreator = new RequestCreator(this);
 
-    public H2Connection(int maxQueueSize, H2ConnectionManager manager, Channel channel) {
+    public H2Connection(
+            LoginCredentials login,
+            int maxQueueSize,
+            H2ConnectionManager manager,
+            Channel channel,
+            StackTracingOptions stackTraces) {
+        this.login = login;
         this.maxQueueSize = maxQueueSize;
         this.manager = manager;
         this.channel = channel;
-        synchronized (lock){
-            requestQueue = new ArrayDeque<Request>(maxQueueSize+1);
-        }
+        requestQueue = new ArrayDeque<>(maxQueueSize + 1);
+        this.stackTraces = stackTraces;
     }
 
 
     @Override
-    public ConnectionManager getConnectionManager() {
+    public H2ConnectionManager getConnectionManager() {
         return manager;
     }
 
-    @Override
-    public void beginTransaction() {
+    public void beginTransaction(DbCallback<Void> callback) {
         checkClosed();
-        synchronized (lock){
+        StackTraceElement[] entry = stackTraces.captureStacktraceAtEntryPoint();
+        synchronized (lock) {
             if (isInTransaction()) {
                 throw new DbException("Cannot begin new transaction.  Current transaction needs to be committed or rolled back");
             }
             isInTransaction = true;
-            final Request request = requestCreator.beginTransaction();
-            queRequest(request);
+            final Request request = requestCreator.beginTransaction(callback, entry);
+            queRequest(request, entry);
         }
     }
 
-    @Override
-    public DbFuture<Void> commit() {
+    public void commit(DbCallback<Void> callback) {
         checkClosed();
-        synchronized (lock){
+        StackTraceElement[] entry = stackTraces.captureStacktraceAtEntryPoint();
+        synchronized (lock) {
             if (!isInTransaction()) {
                 throw new DbException("Not currently in a transaction, cannot commit");
             }
-            final Request request = requestCreator.commitTransaction();
-            queRequest(request);
+            final Request request = requestCreator.commitTransaction(callback, entry);
+            queRequest(request, entry);
             isInTransaction = false;
-            return (DbFuture<Void>) request.getToComplete();
         }
     }
 
-    @Override
-    public DbFuture<Void> rollback() {
+    public void rollback(DbCallback<Void> callback) {
         checkClosed();
-        synchronized (lock){
+        StackTraceElement[] entry = stackTraces.captureStacktraceAtEntryPoint();
+        synchronized (lock) {
             if (!isInTransaction()) {
                 throw new DbException("Not currently in a transaction, cannot rollback");
             }
-            final Request request = requestCreator.rollbackTransaction();
-            queRequest(request);
-            isInTransaction = false;
-            return (DbFuture<Void>) request.getToComplete();
+            doRollback(entry, callback);
         }
+    }
+
+    private void doRollback(StackTraceElement[] entry, DbCallback<Void> callback) {
+        final Request request = requestCreator.rollbackTransaction(callback, entry);
+        queRequest(request, entry);
+        isInTransaction = false;
     }
 
     @Override
@@ -94,116 +103,126 @@ public class H2Connection implements Connection {
         return isInTransaction;
     }
 
-    @Override
-    public DbFuture<ResultSet> executeQuery(String sql) {
+    public <T> void executeQuery(String sql, ResultHandler<T> eventHandler, T accumulator, DbCallback<T> callback) {
         checkClosed();
-        ResultHandler<DefaultResultSet> eventHandler = new DefaultResultEventsHandler();
-        DefaultResultSet resultSet = new DefaultResultSet();
-        return (DbFuture) executeQuery(sql, eventHandler, resultSet);
+        StackTraceElement[] entry = stackTraces.captureStacktraceAtEntryPoint();
+
+        Request request = requestCreator.createQuery(sql, eventHandler, accumulator, callback, entry);
+        queRequest(request, entry);
     }
 
-    @Override
-    public <T> DbFuture<T> executeQuery(String sql, ResultHandler<T> eventHandler, T accumulator) {
+    public void executeUpdate(String sql, DbCallback<Result> callback) {
         checkClosed();
-        synchronized (lock){
-            final Request request = requestCreator.createQuery(sql, eventHandler, accumulator);
-            queRequest(request);
-            return (DbFuture<T>) request.getToComplete();
-        }
+        StackTraceElement[] entry = stackTraces.captureStacktraceAtEntryPoint();
+
+        Request request = requestCreator.createUpdate(sql, callback, entry);
+        queRequest(request, entry);
     }
 
-    @Override
-    public DbFuture<Result> executeUpdate(String sql) {
+    public void prepareQuery(String sql, DbCallback<PreparedQuery> callback) {
         checkClosed();
-        final Request request = requestCreator.executeUpdate(sql);
-        queRequest(request);
-        return (DbFuture) request.getToComplete();
+        StackTraceElement[] entry = stackTraces.captureStacktraceAtEntryPoint();
+        final Request request = requestCreator.executePrepareQuery(sql, callback, entry);
+        queRequest(request, entry);
     }
 
-    @Override
-    public DbFuture<PreparedQuery> prepareQuery(String sql) {
+    public void prepareUpdate(String sql, DbCallback<PreparedUpdate> callback) {
         checkClosed();
-        final Request request = requestCreator.executePrepareQuery(sql);
-        queRequest(request);
-        return (DbFuture<PreparedQuery>) request.getToComplete();
+        StackTraceElement[] entry = stackTraces.captureStacktraceAtEntryPoint();
+        final Request request = requestCreator.executePrepareUpdate(sql, callback, entry);
+        queRequest(request, entry);
     }
 
-    @Override
-    public DbFuture<PreparedUpdate> prepareUpdate(String sql) {
-        checkClosed();
-        final Request request = requestCreator.executePrepareUpdate(sql);
-        queRequest(request);
-        return (DbFuture<PreparedUpdate>) request.getToComplete();
-    }
-
-    @Override
-    public DbFuture<Void> close() throws DbException {
-        return close(CloseMode.CLOSE_GRACEFULLY);
-    }
-
-    @Override
-    public DbFuture<Void> close(CloseMode closeMode) throws DbException {
-        synchronized (lock){
-            if(this.closeFuture!=null){
-                return closeFuture;
-            }
-            if(closeMode==CloseMode.CANCEL_PENDING_OPERATIONS){
-                forceCloseOnPendingRequests();
-            }
-            Request request = requestCreator.createCloseRequest();
-            forceQueRequest(request);
-            closeFuture = (DefaultDbFuture<Void>) request.getToComplete();
-            closeFuture.addListener(new DbListener<Void>() {
-                @Override
-                public void onCompletion(DbFuture<Void> future) {
-                    H2Connection.this.manager.removeConnection(H2Connection.this);
+    public void close(CloseMode closeMode, DbCallback<Void> callback) throws DbException {
+        StackTraceElement[] entry = stackTraces.captureStacktraceAtEntryPoint();
+        synchronized (lock) {
+            closer.requestClose(callback, () -> {
+                if (this.manager.connectionPool == null || manager.isClosed() || closeMode == CloseMode.CLOSE_FORCIBLY) {
+                    doActualClose(closeMode, entry);
+                } else {
+                    doRollback(entry, (result, failure) -> {
+                        if (failure == null) {
+                            if(manager.isClosed()){
+                                doActualClose(closeMode, entry);
+                            } else{
+                                channel.pipeline().remove(H2ConnectionManager.DECODER);
+                                manager.connectionPool.release(login, channel);
+                                callback.onComplete(result, null);
+                            }
+                        } else {
+                            callback.onComplete(null,
+                                    new DbException("Failed to rollback transaction and return connection to pool", failure));
+                        }
+                    });
                 }
             });
-            return closeFuture;
         }
+    }
+
+    private void doActualClose(CloseMode closeMode, StackTraceElement[] entry) {
+        if (closeMode == CloseMode.CANCEL_PENDING_OPERATIONS || closeMode == CloseMode.CLOSE_FORCIBLY) {
+            forceCloseOnPendingRequests();
+        }
+
+        Request request = requestCreator.createCloseRequest(
+                (result, error) -> tryCompleteClose(error),
+                entry);
+        forceQueRequest(request);
     }
 
     @Override
     public boolean isClosed() throws DbException {
-        return null!=closeFuture;
+        return closer.isClose();
     }
 
-    @Override
-    public boolean isOpen() throws DbException {
-        return !isClosed();
-    }
+    void queRequest(Request request, StackTraceElement[] entry) {
+        synchronized (lock) {
+            if(failIfQueueFull(request, entry)){
+                forceQueRequest(request);
 
-    void queRequest(Request request) {
-        synchronized (lock){
-            int requestsPending = requestQueue.size()
-                    +( (null!=blockingRequest) ? blockingRequest.waitingRequests.size() : 0);
-            if(requestsPending>maxQueueSize){
-                throw new DbException("To many pending requests. The current maximum is "+maxQueueSize+"."+
-                    "Ensure that your not overloading the database with requests. " +
-                    "Also check the "+StandardProperties.MAX_QUEUE_LENGTH+" property");
             }
-            forceQueRequest(request);
         }
     }
 
+    private boolean failIfQueueFull(Request request, StackTraceElement[] entry) {
+        int requestsPending = requestQueue.size() + (blockingRequest == null ? 0 : blockingRequest.size());
+        if (requestsPending > maxQueueSize) {
+            DbException ex = new DbException("To many pending requests. The current maximum is " + maxQueueSize +
+                    ". Ensure that your not overloading the database with requests. " +
+                    "Also check the " + StandardProperties.MAX_QUEUE_LENGTH + " property", null, entry);
+            request.completeFailure(ex);
+            return false;
+        } else{
+            return true;
+        }
+    }
+
+    void cancelBlockedRequest(Request request) {
+        synchronized (lock) {
+            assert blockingRequest != null;
+            assert blockingRequest.unblockBy(request);
+            BlockingRequestInProgress req = blockingRequest;
+            blockingRequest = null;
+            req.continueWithRequests();
+        }
+
+    }
+
     public void forceQueRequest(Request request) {
-        synchronized (lock){
-            if(blockingRequest==null){
+        synchronized (lock) {
+            if (blockingRequest == null) {
                 requestQueue.add(request);
                 channel.writeAndFlush(request.getRequest());
-                if(request.isBlocking()){
-                    blockingRequest = new BlockingRequestInProgress(request);
-                    request.getToComplete().addListener(new DbListener<Object>() {
-                        @Override
-                        public void onCompletion(DbFuture<Object> future) {
-                            blockingRequest.continueWithRequests();
-                        }
-                    });
+                if (request instanceof BlockingRequestInProgress) {
+                    blockingRequest = (BlockingRequestInProgress) request;
                 }
-            } else{
-                if(blockingRequest.unblockBy(request)){
+            } else {
+                if (blockingRequest.unblockBy(request)) {
                     requestQueue.add(request);
                     channel.writeAndFlush(request.getRequest());
+                    BlockingRequestInProgress req = blockingRequest;
+                    blockingRequest = null;
+                    req.continueWithRequests();
                 } else {
                     blockingRequest.add(request);
                 }
@@ -216,33 +235,27 @@ public class H2Connection implements Connection {
     }
 
     public Request dequeRequest() {
-        synchronized (lock){
+        synchronized (lock) {
             final Request request = requestQueue.poll();
-            if(logger.isDebugEnabled()){
-                logger.debug("Dequeued request: {}",request);
-            }
-            if(request.getRequest().wasCancelled()){
-                if(logger.isDebugEnabled()){
-                    logger.debug("Request has been cancelled: {}",request);
-                }
-                return dequeRequest();
+            if (logger.isDebugEnabled()) {
+                logger.debug("Dequeued request: {}", request);
             }
             return request;
         }
     }
+
     public int nextId() {
         return requestId.incrementAndGet();
     }
 
-    public void tryCompleteClose() {
-        synchronized (lock){
-            if(null!=closeFuture){
-                closeFuture.trySetResult(null);
-            }
+    public void tryCompleteClose(DbException error) {
+        synchronized (lock) {
+            H2Connection.this.manager.closedConnection(H2Connection.this);
+            closer.didClose(error);
         }
     }
 
-    Object connectionLock(){
+    Object connectionLock() {
         return lock;
     }
 
@@ -253,6 +266,7 @@ public class H2Connection implements Connection {
     int idForCommit() {
         return commitIdSession;
     }
+
     int idForRollback() {
         return rollbackIdSession;
     }
@@ -264,57 +278,25 @@ public class H2Connection implements Connection {
 
 
     private void forceCloseOnPendingRequests() {
-        for (Request request : requestQueue) {
-            if(request.getRequest().tryCancel()){
-                request.getToComplete().trySetException(new DbSessionClosedException("Connection is closed"));
+        synchronized (lock) {
+            DbConnectionClosedException closedEx = new DbConnectionClosedException("Connection closed");
+            if (blockingRequest != null) {
+                blockingRequest.completeFailure(closedEx);
             }
-        }
-        if(null!=blockingRequest){
-            for (Request waitingRequest : blockingRequest.waitingRequests) {
-                if(waitingRequest.getRequest().tryCancel()){
-                    waitingRequest.getToComplete().trySetException(new DbSessionClosedException("Connection is closed"));
+            for (Request request : requestQueue) {
+                if (blockingRequest != request) {
+                    request.completeFailure(closedEx);
                 }
             }
         }
     }
 
-    void checkClosed(){
-        if(isClosed()){
-            throw new DbSessionClosedException("This connection is closed");
+    void checkClosed() {
+        if (isClosed()) {
+            throw new DbConnectionClosedException("This connection is closed");
         }
     }
 
-    public StackTracingOptions stackTrachingOptions() {
-        return this.manager.stackTracingOptions();
-    }
-
-    /**
-     * Expects that it is executed withing the connection lock
-     */
-    class BlockingRequestInProgress{
-        private final ArrayList<Request> waitingRequests = new ArrayList<Request>();
-        private final Request blockingRequest;
-
-        BlockingRequestInProgress(Request blockingRequest) {
-            this.blockingRequest = blockingRequest;
-        }
-
-
-        public void add(Request request) {
-            waitingRequests.add(request);
-        }
-
-        public boolean unblockBy(Request nextRequest) {
-            return blockingRequest.unblockBy(nextRequest);
-        }
-
-        public void continueWithRequests() {
-            H2Connection.this.blockingRequest = null;
-            for (Request waitingRequest : waitingRequests) {
-                forceQueRequest(waitingRequest);
-            }
-        }
-    }
 }
 
 

@@ -7,12 +7,9 @@ import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class DateTimeUtils {
-    private static int zoneOffset;
-    private static Calendar cachedCalendar;
+    private static final Calendar cachedCalendar = Calendar.getInstance();
     private static final int SHIFT_YEAR = 9;
     private static final int SHIFT_MONTH = 5;
 
@@ -58,11 +55,10 @@ public class DateTimeUtils {
      * @return the date value
      */
     public static long dateValueFromDate(long ms) {
-        Calendar cal = getCalendar();
-        synchronized (cal) {
-            cal.clear();
-            cal.setTimeInMillis(ms);
-            return dateValueFromCalendar(cal);
+        synchronized (cachedCalendar) {
+            cachedCalendar.clear();
+            cachedCalendar.setTimeInMillis(ms);
+            return dateValueFromCalendar(cachedCalendar);
         }
     }
 
@@ -187,29 +183,31 @@ public class DateTimeUtils {
         return (int) (x & 31);
     }
 
-    private static Calendar getCalendar() {
-        if (cachedCalendar == null) {
-            cachedCalendar = Calendar.getInstance();
-            zoneOffset = cachedCalendar.get(Calendar.ZONE_OFFSET);
+
+    private static long getTimeTry(boolean lenient,
+                                   TimeZone tz,
+                                   int year,
+                                   int month,
+                                   int day,
+                                   int hour,
+                                   int minute,
+                                   int second,
+                                   int millis) {
+        if (tz == null) {
+            synchronized (cachedCalendar) {
+                return getTimeTry(cachedCalendar, lenient, year, month, day, hour, minute, second, millis);
+            }
+        } else {
+            Calendar c = Calendar.getInstance(tz);
+            return getTimeTry(c, lenient, year, month, day, hour, minute, second, millis);
         }
-        return cachedCalendar;
     }
 
-    private static long getTimeTry(boolean lenient, TimeZone tz,
-                                   int year, int month, int day, int hour, int minute, int second,
-                                   int millis) {
-        Calendar c;
-        if (tz == null) {
-            c = getCalendar();
-        } else {
-            c = Calendar.getInstance(tz);
-        }
-        synchronized (c) {
-            c.clear();
-            c.setLenient(lenient);
-            setCalendarFields(c, year, month, day, hour, minute, second, millis);
-            return c.getTime().getTime();
-        }
+    private static long getTimeTry(Calendar c, boolean lenient, int year, int month, int day, int hour, int minute, int second, int millis) {
+        c.clear();
+        c.setLenient(lenient);
+        setCalendarFields(c, year, month, day, hour, minute, second, millis);
+        return c.getTime().getTime();
     }
 
     private static void setCalendarFields(Calendar cal, int year, int month, int day,

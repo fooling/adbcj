@@ -5,10 +5,7 @@ import org.adbcj.mysql.codec.IoUtils;
 import java.io.IOException;
 import java.io.OutputStream;
 
-/**
- * @author roman.stoffel@gamlor.info
- * @since 26.04.12
- */
+
 public class ClosePreparedStatementRequest extends CommandRequest {
     private final int statementId;
 

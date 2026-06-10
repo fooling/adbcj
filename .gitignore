@@ -2,3 +2,6 @@
 *.iml
 target/
 h2testdb/
+.classpath
+.project
+.settings

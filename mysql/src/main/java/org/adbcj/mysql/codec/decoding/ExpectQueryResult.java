@@ -1,39 +1,44 @@
 package org.adbcj.mysql.codec.decoding;
 
+import org.adbcj.DbCallback;
+import org.adbcj.DbException;
 import org.adbcj.ResultHandler;
+import org.adbcj.mysql.MySqlConnection;
 import org.adbcj.mysql.codec.*;
 import org.adbcj.mysql.codec.packets.ErrorResponse;
 import org.adbcj.mysql.codec.packets.OkResponse;
-import org.adbcj.support.DefaultDbFuture;
 
 import java.io.IOException;
 import java.util.ArrayList;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class ExpectQueryResult<T> extends ResponseStart {
     private final ResultHandler<T> eventHandler;
     private final T accumulator;
-    protected final DefaultDbFuture<T> future;
+    protected final DbCallback<T> callback;
     private Row.RowDecodingType decodingType;
+    private final StackTraceElement[] entry;
+    private DbException failure;
 
-    public ExpectQueryResult(Row.RowDecodingType decodingType,
-                             DefaultDbFuture<T> future,
-                             MySqlConnection connection,
-                             ResultHandler<T> eventHandler,
-                             T accumulator) {
+    public ExpectQueryResult(
+            MySqlConnection connection,
+            Row.RowDecodingType decodingType,
+            ResultHandler<T> eventHandler,
+            T accumulator,
+            DbCallback<T> callback,
+            StackTraceElement[] entry) {
         super(connection);
         this.decodingType = decodingType;
-        this.future = future;
         this.eventHandler = eventHandler;
         this.accumulator = accumulator;
+        this.callback = sandboxCallback(callback);
+        this.entry = entry;
     }
 
     @Override
     protected ResultAndState handleError(ErrorResponse errorResponse) {
-        future.trySetException(errorResponse.toException());
-        return new ResultAndState(new AcceptNextResponse(connection),errorResponse );
+        callback.onComplete(null, errorResponse.toException(entry));
+        return new ResultAndState(new AcceptNextResponse(connection), errorResponse);
     }
 
     @Override
@@ -52,14 +57,21 @@ public class ExpectQueryResult<T> extends ResponseStart {
         if (in.getRemaining() > 0) {
             extra = IoUtils.readBinaryLengthEncoding(in);
         }
-        eventHandler.startFields(accumulator);
-        return result(new FieldDecodingState(decodingType,
-                expectedFieldPackets,
-                new ArrayList<MysqlField>(),
-                future,
-                connection,
-                eventHandler,
-                accumulator),
+        try{
+            eventHandler.startFields(accumulator);
+        } catch (Exception any){
+            failure = DbException.wrap(any, entry);
+        }
+        return result(new FieldDecodingState(
+                        connection,
+                        decodingType,
+                        expectedFieldPackets,
+                        new ArrayList<>(),
+                        eventHandler,
+                        accumulator,
+                        callback,
+                        entry,
+                        failure),
                 new ResultSetResponse(length, packetNumber, expectedFieldPackets, extra));
     }
 }

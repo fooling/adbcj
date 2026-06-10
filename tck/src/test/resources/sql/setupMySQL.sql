@@ -1,3 +1,7 @@
+DROP USER IF EXISTS 'ADBCJ-OTHER-USER'@'localhost';
+CREATE USER 'ADBCJ-OTHER-USER'@'localhost' IDENTIFIED BY  'adbcj-other-user';
+GRANT USAGE ON adbcjtck.* TO 'ADBCJ-OTHER-USER'@'localhost';
+GRANT ALL PRIVILEGES ON *.* TO  'ADBCJ-OTHER-USER'@'localhost';
 
 DROP TABLE IF EXISTS simple_values;
 
@@ -86,10 +90,12 @@ INSERT INTO textcontent (id, lang, textData) VALUES
 (4, 'zh', '维基百科（英语：Wikipedia）'),
 (5, 'ja', 'ウィキペディア（英: Wikipedia）');
 
-DROP TABLE IF EXISTS tablewithautoid;
+DROP TABLE IF EXISTS tableWithAutoId;
 
-CREATE TABLE IF NOT EXISTS tablewithautoid(
+CREATE TABLE IF NOT EXISTS tableWithAutoId(
   id int(11) NOT NULL AUTO_INCREMENT,
   textData varchar(255) COLLATE utf8_roman_ci NOT NULL,
   PRIMARY KEY (id)
 ) ENGINE=InnoDB;
+
+

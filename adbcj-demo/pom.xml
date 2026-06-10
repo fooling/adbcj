@@ -9,12 +9,12 @@
     <artifactId>demo-project</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
-    <name>ADBCJ - API</name>
+    <name>ADBCJ - Demo Project</name>
 
 
     <properties>
         <slf4j.version>1.7.2</slf4j.version>
-        <adbcj.version>0.7.2-SNAPSHOT</adbcj.version>
+        <adbcj.version>0.9</adbcj.version>
     </properties>
 
     <dependencies>
@@ -36,66 +36,40 @@
         </dependency>
         <dependency>
             <groupId>org.adbcj</groupId>
-            <artifactId>adbcj-connection-pool</artifactId>
+            <artifactId>h2-async-driver</artifactId>
             <version>${adbcj.version}</version>
         </dependency>
+        <!-- Demo server -->
         <dependency>
-            <groupId>org.adbcj</groupId>
-            <artifactId>mysql-async-driver</artifactId>
-            <version>${adbcj.version}</version>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>1.4.193</version>
         </dependency>
-        <dependency>
-            <groupId>org.adbcj</groupId>
-            <artifactId>adbcj-dbcj</artifactId>
-            <version>${adbcj.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.adbcj</groupId>
-            <artifactId>adbcj-poolx</artifactId>
-            <version>${adbcj.version}</version>
-        </dependency>
-        <!-- datasource  -->
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>druid</artifactId>
-            <version>0.2.12</version>
-        </dependency>
-        <!--<dependency>
-            <groupId>mysql</groupId>
-            <artifactId>mysql-connector-java</artifactId>
-            <version>5.1.17</version>
-        </dependency>-->
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                    <debug>true</debug>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
-    <!-- FIXME: not available sometimes when version changes   -->
-<!--
     <repositories>
         <repository>
-            <id>gamlor-snapshot</id>
-            <url>https://raw.github.com/gamlerhart/gamlor-mvn/master/snapshots</url>
             <snapshots>
-                <enabled>true</enabled>
+                <enabled>false</enabled>
             </snapshots>
-            <layout>default</layout>
-        </repository>
-    </repositories>-->
-    <repositories>
-        <!-- for druid -->
-        <repository>
-            <id>alibaba-opensource</id>
-            <name>alibaba-opensource</name>
-            <url>http://code.alibabatech.com/mvn/releases/</url>
-            <layout>default</layout>
-        </repository>
-        <!-- for druid -->
-        <repository>
-            <id>alibaba-opensource-snapshot</id>
-            <name>alibaba-opensource-snapshot</name>
-            <url>http://code.alibabatech.com/mvn/snapshots/</url>
-            <layout>default</layout>
+            <id>central</id>
+            <name>bintray</name>
+            <url>https://jcenter.bintray.com</url>
         </repository>
     </repositories>
-
 
 </project>

@@ -13,10 +13,6 @@ import java.util.Date;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
-/**
- * @author roman.stoffel@gamlor.info
- * @since 03.05.12
- */
 public class SupportedDataTypesTest extends AbstractWithConnectionManagerTest {
 
 

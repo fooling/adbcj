@@ -17,349 +17,277 @@
 package org.adbcj.jdbc;
 
 import org.adbcj.*;
+import org.adbcj.Connection;
+import org.adbcj.support.CloseOnce;
+import org.adbcj.support.stacktracing.StackTracingOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.SQLException;
-import java.sql.SQLWarning;
-import java.sql.Statement;
-import java.util.LinkedList;
+import java.sql.*;
+import java.sql.ResultSet;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 
-import static org.adbcj.jdbc.ResultSetCopier.fillResultSet;
-
-public class JdbcConnection extends AbstractDbSession implements Connection {
-
-    private final Logger logger = LoggerFactory.getLogger(JdbcConnection.class);
+public class JdbcConnection implements Connection {
+    private final static Logger LOGGER = LoggerFactory.getLogger(JdbcConnection.class);
 
     private final JdbcConnectionManager connectionManager;
     private final java.sql.Connection jdbcConnection;
     private final ExecutorService threadPool;
-    private volatile DbFuture<Void> closeFuture = null;
+    private final int maxQueueSize;
+    final StackTracingOptions strackTraces;
+
+    final Object lock = new Object();
+    private final ArrayDeque<Request> requestQueue;
+    private boolean isInTransaction;
+    private final CloseOnce closer = new CloseOnce();
 
     public JdbcConnection(JdbcConnectionManager connectionManager,
                           java.sql.Connection jdbcConnection,
-                          ExecutorService threadPool) {
-        super(connectionManager.stackTracingOptions(),connectionManager.maxQueueLength());
+                          ExecutorService threadPool,
+                          int maxQueueSize,
+                          StackTracingOptions strackTraces) {
         this.connectionManager = connectionManager;
         this.jdbcConnection = jdbcConnection;
         this.threadPool = threadPool;
+        this.maxQueueSize = maxQueueSize;
+        this.strackTraces = strackTraces;
+        this.requestQueue = new ArrayDeque<>(maxQueueSize + 1);
     }
 
-    @Override
-    protected Logger logger() {
-        return logger;
-    }
 
     public ConnectionManager getConnectionManager() {
         return connectionManager;
     }
 
-    public synchronized DbFuture<Void> close() throws DbException {
-        return close(CloseMode.CLOSE_GRACEFULLY);
-    }
 
     @Override
-    public synchronized DbFuture<Void> close(CloseMode closeMode) throws DbException {
-
-        if (!isClosed()) {
-            Request<Void> closeRequest = new Request<Void>(this) {
-                @Override
-                protected void execute() throws Exception {
-                    try {
-                        synchronized (jdbcConnection) {
-                            jdbcConnection.close();
-                        }
-                    } finally {
-                        complete(null);
-                    }
-                }
-
-                @Override
-                public synchronized boolean cancelRequest() {
-                    return false;
-                }
-
-                @Override
-                public boolean isPipelinable() {
-                    return false;
-                }
-            };
-            if (closeMode != CloseMode.CLOSE_GRACEFULLY) {
-                errorPendingRequests(new DbException("Connection was closed"));
-            }
-            closeFuture = enqueueRequest(closeRequest).getFuture();
-        }
-        return closeFuture;
-    }
-
-    public boolean isClosed() {
-        return closeFuture != null;
-    }
-
-    @Override
-    public boolean isOpen() throws DbException {
-        return !isClosed();
-    }
-
-    public <T> DbFuture<T> executeQuery(final String sql, final ResultHandler<T> eventHandler, final T accumulator) {
+    public void beginTransaction(DbCallback<Void> callback) {
         checkClosed();
-        logger.trace("Scheduling query '{}'", sql);
-        return enqueueTransactionalRequest(new CallableRequest<T>() {
-            @Override
-            protected T doCall() throws Exception {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Executing query '{}'", sql);
-                }
-                synchronized (jdbcConnection) {
-                    Statement jdbcStatement = jdbcConnection.createStatement();
-                    java.sql.ResultSet jdbcResultSet = null;
-                    try {
-                        // Execute query
-                        jdbcResultSet = jdbcStatement.executeQuery(sql);
-                        fillResultSet(jdbcResultSet, eventHandler, accumulator);
-
-
-                        return accumulator;
-                    } catch (Exception e) {
-                        eventHandler.exception(e, accumulator);
-                        throw e;
-                    } finally {
-                        if (jdbcResultSet != null) {
-                            jdbcResultSet.close();
-                        }
-                        if (jdbcStatement != null) {
-                            jdbcStatement.close();
-                        }
-                    }
-
-                }
+        StackTraceElement[] entry = strackTraces.captureStacktraceAtEntryPoint();
+        synchronized (lock) {
+            if (isInTransaction()) {
+                throw new DbException("Cannot begin new transaction. Current transaction needs to be committed or rolled back");
             }
-
-            public String toString() {
-                return "CallableRequest: " + sql;
-            }
+            isInTransaction = true;
+            queueRequestVoid(callback, entry, jdbc -> jdbc.setAutoCommit(false));
 
         }
-        );
-    }
 
-    public DbFuture<Result> executeUpdate(final String sql) {
-        checkClosed();
-        return enqueueTransactionalRequest(new CallableRequest<Result>() {
-            public Result doCall() throws Exception {
-                synchronized (jdbcConnection) {
-                    Statement statement = jdbcConnection.createStatement();
-                    try {
-                        statement.executeUpdate(sql, Statement.RETURN_GENERATED_KEYS);
-                        List<String> warnings = new LinkedList<String>();
-                        SQLWarning sqlWarnings = statement.getWarnings();
-                        while (sqlWarnings != null) {
-                            warnings.add(sqlWarnings.getLocalizedMessage());
-                            sqlWarnings = sqlWarnings.getNextWarning();
-                        }
-                        return new JDBCResult((long) statement.getUpdateCount(),
-                                warnings, statement.getGeneratedKeys());
-                    } finally {
-                        statement.close();
-                    }
-                }
-            }
-        });
     }
-
-    public DbFuture<PreparedQuery> prepareQuery(final String sql) {
-        checkClosed();
-        return enqueueTransactionalRequest(new CallableRequest<PreparedQuery>() {
-            @Override
-            protected PreparedQuery doCall() throws Exception {
-                synchronized (jdbcConnection) {
-                    return new JDBCPreparedQuery(JdbcConnection.this, jdbcConnection.prepareStatement(sql));
-                }
-            }
-        });
-    }
-
 
     @Override
-    public DbFuture<PreparedUpdate> prepareUpdate(final String sql) {
+    public void commit(DbCallback<Void> callback) {
         checkClosed();
-        return enqueueTransactionalRequest(new CallableRequest<PreparedUpdate>() {
-            @Override
-            protected PreparedUpdate doCall() throws Exception {
-                synchronized (jdbcConnection) {
-                    if (jdbcConnection.getMetaData().supportsGetGeneratedKeys()) {
-                        return new JDBCPreparedUpdate(JdbcConnection.this,
-                                jdbcConnection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS));
-                    } else {
-                        return new JDBCPreparedUpdate(JdbcConnection.this,
-                                jdbcConnection.prepareStatement(sql));
+        StackTraceElement[] entry = strackTraces.captureStacktraceAtEntryPoint();
+        synchronized (lock) {
+            if (!isInTransaction()) {
+                throw new DbException("Cannot commit transaction. A transacition first needs to be started");
+            }
+            isInTransaction = false;
+            queueRequestVoid(callback, entry, jdbc->{
+                jdbc.commit();
+                jdbc.setAutoCommit(true);
+            });
+        }
+    }
+
+    @Override
+    public void rollback(DbCallback<Void> callback) {
+        checkClosed();
+        StackTraceElement[] entry = strackTraces.captureStacktraceAtEntryPoint();
+        synchronized (lock) {
+            if (!isInTransaction()) {
+                throw new DbException("Cannot rollback transaction. A transacition first needs to be started");
+            }
+            isInTransaction = false;
+            queueRequestVoid(callback, entry, jdbc->{
+                jdbc.rollback();
+                jdbc.setAutoCommit(true);
+            });
+        }
+    }
+
+    @Override
+    public boolean isInTransaction() {
+        return isInTransaction;
+    }
+
+    @Override
+    public <T> void executeQuery(String sql, ResultHandler<T> eventHandler, T accumulator, DbCallback<T> callback) {
+        checkClosed();
+        StackTraceElement[] entry = strackTraces.captureStacktraceAtEntryPoint();
+        synchronized (lock) {
+            queueRequest(callback, entry, connection -> {
+                try (ResultSet jdbcResult = connection.createStatement().executeQuery(sql)) {
+                    ResultSetCopier.fillResultSet(
+                            jdbcResult,
+                            eventHandler,
+                            accumulator);
+                    return accumulator;
+                }
+            });
+        }
+    }
+
+    @Override
+    public void executeUpdate(String sql, DbCallback<Result> callback) {
+        checkClosed();
+        StackTraceElement[] entry = strackTraces.captureStacktraceAtEntryPoint();
+        synchronized (lock) {
+            queueRequest(callback, entry, connection -> {
+                try (Statement statement = connection.createStatement()) {
+                    statement.executeUpdate(sql, Statement.RETURN_GENERATED_KEYS);
+                    List<String> warnings = new ArrayList<>();
+                    SQLWarning sqlWarnings = statement.getWarnings();
+                    while (sqlWarnings != null) {
+                        warnings.add(sqlWarnings.getLocalizedMessage());
+                        sqlWarnings = sqlWarnings.getNextWarning();
+                    }
+                    return new JDBCResult(
+                            (long) statement.getUpdateCount(),
+                            warnings,
+                            statement.getGeneratedKeys(),
+                            (result, failure) -> {
+                                if(failure!=null){
+                                    callback.onComplete(null, failure);
+                                }
+                            },
+                            entry);
+                }
+            });
+        }
+
+    }
+
+    @Override
+    public void prepareQuery(String sql, DbCallback<PreparedQuery> callback) {
+        checkClosed();
+        StackTraceElement[] entry = strackTraces.captureStacktraceAtEntryPoint();
+        queueRequest(callback, entry, jdbc-> new JDBCPreparedQuery(JdbcConnection.this, jdbc.prepareStatement(sql)));
+    }
+
+    @Override
+    public void prepareUpdate(String sql, DbCallback<PreparedUpdate> callback) {
+        StackTraceElement[] entry = strackTraces.captureStacktraceAtEntryPoint();
+        queueRequest(callback, entry, jdbc ->
+                new JDBCPreparedUpdate(
+                        JdbcConnection.this,
+                        jdbc.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)));
+
+    }
+
+    @Override
+    public void close(CloseMode closeMode, DbCallback<Void> callback) throws DbException {
+        StackTraceElement[] entry = strackTraces.captureStacktraceAtEntryPoint();
+        closer.requestClose(callback, ()->{
+            synchronized (lock){
+                if(closeMode==CloseMode.CANCEL_PENDING_OPERATIONS){
+                    Request pending = requestQueue.poll();
+                    while(pending!=null){
+                        pending.callback.onComplete(null, new DbConnectionClosedException("This connection is closed", null, entry));
+                        pending = requestQueue.poll();
                     }
                 }
             }
+            queueRequestVoid(callback,entry, jdbc->{
+                connectionManager.closedConnection(JdbcConnection.this);
+                jdbc.close();
+            });
         });
     }
 
-
     @Override
-    protected <E> void invokeExecuteWithCatch(final Request<E> request) {
-        threadPool.execute(new Runnable() {
-            @Override
-            public void run() {
-                JdbcConnection.super.invokeExecuteWithCatch(request);
-            }
-        });
+    public boolean isClosed() throws DbException {
+        return closer.isClose();
     }
 
-    /*
-    *
-    * End of API methods
-    *
-    */
 
-    // *********** Transaction method implementations **************************
 
-    @Override
-    protected void sendBegin() throws SQLException {
-        logger.trace("Sending begin");
-        synchronized (jdbcConnection) {
-            jdbcConnection.setAutoCommit(false);
-        }
-    }
-
-    @Override
-    protected Request<Void> createBeginRequest(Transaction transaction) {
-        logger.trace("Creating begin request");
-        return new CallableRequestWrapper(super.createBeginRequest(transaction));
-    }
-
-    @Override
-    protected void sendCommit() throws SQLException {
-        logger.trace("Sending commit");
-        synchronized (jdbcConnection) {
-            jdbcConnection.commit();
-            jdbcConnection.setAutoCommit(true);
-        }
-    }
-
-    @Override
-    protected Request<Void> createCommitRequest(Transaction transaction) {
-        logger.trace("Creating commit request");
-        return new CallableRequestWrapper(super.createCommitRequest(transaction));
-    }
-
-    @Override
-    protected void sendRollback() throws SQLException {
-        logger.trace("Sending rollback");
-        synchronized (jdbcConnection) {
-            jdbcConnection.rollback();
-        }
-    }
-
-    @Override
-    protected Request<Void> createRollbackRequest() {
-        logger.trace("Creating rollback request");
-        return new CallableRequestWrapper(super.createRollbackRequest());
-    }
-
-    // *********** JDBC Specific method implementations ************************
-
-    @Override
-    protected void checkClosed() {
+    void checkClosed() {
         if (isClosed()) {
-            throw new DbSessionClosedException("Connection is closed");
+            throw new DbConnectionClosedException("This connection is closed");
         }
     }
 
-    Object lock() {
-        return jdbcConnection;
+    interface JdbcJobResult<T> {
+        T apply(java.sql.Connection connection) throws SQLException;
     }
 
+    interface JdbcJobVoid {
+        void apply(java.sql.Connection connection) throws SQLException;
+    }
 
-    private abstract class CallableRequest<E> extends Request<E> implements Callable<E> {
-        private Future<E> future = null;
+    void queueRequestVoid(DbCallback<Void> callback, StackTraceElement[] entry, JdbcJobVoid toRun) {
+        queueRequest(callback, entry, connection -> {
+            toRun.apply(connection);
+            return null;
+        });
+    }
 
-        protected CallableRequest() {
-            super(JdbcConnection.this);
-        }
+    <T> void queueRequest(DbCallback<T> callback, StackTraceElement[] entry, JdbcJobResult<T> toRun) {
+        synchronized (lock) {
+            int requestsPending = requestQueue.size();
+            if (requestsPending > maxQueueSize) {
 
-        @Override
-        public boolean cancelRequest() {
-            if (future == null) {
-                return true;
-            }
-            return future.cancel(true);
-        }
-
-        @Override
-        final public void execute() {
-            logger.trace("In CallableRequest.execute() processing request {}", this);
-            this.future = connectionManager.getExecutorService().submit(this);
-        }
-
-        final public E call() throws Exception {
-            if (getFuture().isCancelled()) {
-                return null;
+                DbException ex = new DbException("To many pending requests. The current maximum is " + maxQueueSize +
+                        ". Ensure that your not overloading the database with requests. " +
+                        "Also check the " + StandardProperties.MAX_QUEUE_LENGTH + " property");
+                callback.onComplete(null, ex);
+                return;
             }
             try {
-                E value = doCall();
-                complete(value);
-                return value;
-            } catch (Exception e) {
-                error(DbException.wrap(e));
-                complete(null);
-                synchronized (jdbcConnection) {
-                    if (jdbcConnection.isClosed()) {
-                        connectionManager.removeConnection(JdbcConnection.this);
+                boolean queueEmpty = requestQueue.isEmpty();
+                requestQueue.add(new Request<T>(callback, toRun, entry));
+
+                if(queueEmpty){
+                    LOGGER.debug("Queue was empty. Add processing job");
+                    threadPool.submit(this::processRequests);
+                }
+            } catch (Exception any) {
+                callback.onComplete(null, DbException.wrap(any, entry));
+            }
+        }
+    }
+
+    private void processRequests() {
+        Request request;
+        synchronized (lock){
+            request = this.requestQueue.poll();
+        }
+
+        while(request !=null){
+            LOGGER.debug("Process JDBC request");
+            synchronized (jdbcConnection) {
+                try {
+                    Object result = request.toRun.apply(jdbcConnection);
+                    request.callback.onComplete(result, null);
+                } catch (Exception e) {
+                    try{
+                        request.callback.onComplete(null, DbException.wrap(e, request.entry));
+                    } catch (Exception omg){
+                        LOGGER.error("Driver failure: Failed handlinge error", omg);
                     }
                 }
-                throw e;
+            }
+            synchronized (lock){
+                request = this.requestQueue.poll();
             }
         }
-
-        protected abstract E doCall() throws Exception;
-
-        @Override
-        public boolean isPipelinable() {
-            return false;
-        }
-
+        LOGGER.debug("Dequeue no new job. Stop processing requests for now");
     }
 
-    private class CallableRequestWrapper extends CallableRequest<Void> {
+    class Request<T>{
+        final DbCallback<T> callback;
+        final JdbcJobResult<T> toRun;
+        final StackTraceElement[] entry;
 
-        private final Request<Void> request;
-
-        public CallableRequestWrapper(Request<Void> request) {
-            this.request = request;
-        }
-
-        @Override
-        public synchronized boolean cancelRequest() {
-            if (super.cancel(true)) {
-                return request.cancel(true);
-            }
-            return false;
-        }
-
-        @Override
-        protected Void doCall() throws Exception {
-            request.invokeExecute();
-            return null;
-        }
-
-        @Override
-        public boolean canRemove() {
-            return request.canRemove();
-        }
-
-        @Override
-        public boolean isPipelinable() {
-            return request.isPipelinable();
+        public Request(DbCallback<T> callback, JdbcJobResult<T> toRun, StackTraceElement[] entry) {
+            this.callback = callback;
+            this.toRun = toRun;
+            this.entry = entry;
         }
     }
-
 }

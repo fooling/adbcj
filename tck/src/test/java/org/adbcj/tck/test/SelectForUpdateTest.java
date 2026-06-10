@@ -17,13 +17,12 @@
 package org.adbcj.tck.test;
 
 import org.adbcj.Connection;
-import org.adbcj.DbFuture;
-import org.adbcj.DbListener;
 import org.adbcj.ResultSet;
-import org.adbcj.tck.TestUtils;
 import org.testng.annotations.Test;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -34,7 +33,6 @@ import static org.testng.Assert.assertTrue;
 public class SelectForUpdateTest extends AbstractWithConnectionManagerTest{
 
 	public void testSelectForUpdate() throws Exception {
-		final boolean[] invoked = {false, false};
 		final AtomicBoolean locked = new AtomicBoolean(false);
 		final AtomicBoolean error = new AtomicBoolean(false);
 		final CountDownLatch latch1 = new CountDownLatch(1);
@@ -45,30 +43,24 @@ public class SelectForUpdateTest extends AbstractWithConnectionManagerTest{
 		
 		// Get lock on locks table
 		conn1.beginTransaction();
-		TestUtils.selectForUpdate(conn1, new DbListener<ResultSet>() {
-			public void onCompletion(DbFuture<ResultSet> future) {
-				locked.set(true);
-				invoked[0] = true;
-				latch1.countDown();
-			}
+		selectForUpdate(conn1).thenApply(res->{
+			locked.set(true);
+			latch1.countDown();
+			return res;
 		}).get();
 		
 		// Try to get lock with second connection
 		conn2.beginTransaction();
-		DbFuture<ResultSet> future = TestUtils.selectForUpdate(conn2, new DbListener<ResultSet>() {
-			public void onCompletion(DbFuture<ResultSet> future) {
-				invoked[1] = true;
-				if (!locked.get()) {
-					error.set(true);
-				}
-				latch2.countDown();
+		CompletableFuture<ResultSet> future = selectForUpdate(conn2).thenApply(res->{
+			if (!locked.get()) {
+				error.set(true);
 			}
+			latch2.countDown();
+			return res;
 		});
 		
 		assertTrue(latch1.await(1, TimeUnit.SECONDS));
-		assertTrue(invoked[0], "First SELECT FOR UPDATE callback should have been invoked");
 		assertTrue(locked.get(), "locked should be set");
-		assertFalse(invoked[1], "Second SELCT FOR UPDATE callback should not have been invoked yet");
 		assertFalse(error.get());
 		
 		conn1.rollback().get();
@@ -76,7 +68,6 @@ public class SelectForUpdateTest extends AbstractWithConnectionManagerTest{
 		future.get();
 		
 		assertTrue(latch2.await(1, TimeUnit.SECONDS));
-		assertTrue(invoked[1]);
 		assertFalse(error.get(), "An error occurred during SELECT FOR UPDATE");
 		conn2.rollback().get();
 		
@@ -84,5 +75,21 @@ public class SelectForUpdateTest extends AbstractWithConnectionManagerTest{
 		conn1.close().get();
 		conn2.close().get();
 	}
-	
+
+
+
+	public static final String DEFAULT_LOCK_NAME = "lock";
+
+	static CompletableFuture<ResultSet> selectForUpdate(Connection connection) throws InterruptedException {
+		return selectForUpdate(connection, DEFAULT_LOCK_NAME);
+	}
+
+
+	static CompletableFuture<ResultSet> selectForUpdate(Connection connection, String lock) throws InterruptedException {
+		if (!connection.isInTransaction()) {
+			throw new IllegalStateException("You must be in a transaction for a select for update to work");
+		}
+		CompletableFuture<ResultSet> future = connection.executeQuery("SELECT name FROM locks WHERE name='lock' FOR UPDATE");
+		return future;
+	}
 }

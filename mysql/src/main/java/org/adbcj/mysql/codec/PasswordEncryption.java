@@ -20,8 +20,8 @@ package org.adbcj.mysql.codec;
 
 import org.adbcj.DbException;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 
 
 public class PasswordEncryption {
@@ -30,7 +30,7 @@ public class PasswordEncryption {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-1");
 
-            byte[] hash1 = md.digest(password.getBytes("UTF-8"));
+            byte[] hash1 = md.digest(password.getBytes(StandardCharsets.UTF_8));
 
             md.reset();
             byte[] hash2 = md.digest(hash1);

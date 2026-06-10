@@ -1,62 +1,60 @@
 package org.adbcj.h2.decoding;
 
 import io.netty.channel.Channel;
-import org.adbcj.Field;
-import org.adbcj.ResultHandler;
-import org.adbcj.Value;
+import org.adbcj.*;
 import org.adbcj.h2.H2Connection;
 import org.adbcj.h2.H2DbException;
 import org.adbcj.h2.protocol.ReadUtils;
-import org.adbcj.support.DefaultDbFuture;
 
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.List;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class RowDecoder<T> implements DecoderState {
     private final ResultHandler<T> eventHandler;
     private final T accumulator;
-    private final DefaultDbFuture<T> resultFuture;
+    private final DbCallback<T> callback;
     private final H2Connection connection;
     private final List<Field> fields;
     private final int availableRows;
     private final int rowToRead;
+    private final StackTraceElement[] entry;
+    private DbException failure;
 
-    public RowDecoder(ResultHandler<T> eventHandler,
-                      T accumulator,
-                      DefaultDbFuture<T> resultFuture,
-                      H2Connection connection,
-                      List<Field> fields,
-                      int availableRows) {
-        this(eventHandler, accumulator, resultFuture,connection,fields, availableRows, 0);
-    }
 
-    public RowDecoder(ResultHandler<T> eventHandler,
-                      T accumulator,
-                      DefaultDbFuture<T> resultFuture,
-                      H2Connection connection,
-                      List<Field> fields,
-                      int availableRows,
-                      int rowToRead) {
+    public RowDecoder(
+            H2Connection connection,
+            ResultHandler<T> eventHandler,
+            T accumulator,
+            DbException failure,
+            DbCallback<T> resultFuture,
+            StackTraceElement[] entry,
+            List<Field> fields,
+            int availableRows,
+            int rowToRead) {
         this.eventHandler = eventHandler;
         this.accumulator = accumulator;
-        this.resultFuture = resultFuture;
+        this.failure = failure;
+        this.callback = resultFuture;
         this.connection = connection;
         this.fields = fields;
         this.availableRows = availableRows;
         this.rowToRead = rowToRead;
+        this.entry = entry;
     }
 
     @Override
     public ResultAndState decode(DataInputStream stream, Channel channel) throws IOException {
         final ResultOrWait<Boolean> row = IoUtils.tryReadNextBoolean(stream, ResultOrWait.Start);
-        if(0==rowToRead){
-            eventHandler.startResults(accumulator);
+        if (0 == rowToRead) {
+            try {
+                eventHandler.startResults(accumulator);
+            } catch (Exception any) {
+                failure = DbException.wrap(any, entry);
+            }
         }
-        if(row.couldReadResult && !row.result){
+        if (row.couldReadResult && !row.result) {
             return finishResultRead();
         }
         return decodeRow(stream, row);
@@ -72,34 +70,56 @@ public class RowDecoder<T> implements DecoderState {
             values[i] = lastValue;
         }
         if (lastValue.couldReadResult) {
-            eventHandler.startRow(accumulator);
-            for (ResultOrWait<Value> value : values) {
-                eventHandler.value(value.result, accumulator);
+            try {
+                eventHandler.startRow(accumulator);
+                for (ResultOrWait<Value> value : values) {
+                    eventHandler.value(value.result, accumulator);
+                }
+                eventHandler.endRow(accumulator);
+            } catch (Exception any) {
+                failure = DbException.attachSuppressedOrWrap(any, entry, failure);
             }
-            eventHandler.endRow(accumulator);
 
-            if((rowToRead+1)==availableRows){
+            if ((rowToRead + 1) == availableRows) {
                 return finishResultRead();
-            } else{
+            } else {
                 return ResultAndState.newState(
-                        new RowDecoder<T>(eventHandler, accumulator, resultFuture,connection, fields, availableRows,rowToRead+1)
+                        new RowDecoder<T>(
+                                connection,
+                                eventHandler,
+                                accumulator,
+                                failure,
+                                callback,
+                                entry,
+                                fields,
+                                availableRows,
+                                rowToRead + 1)
                 );
             }
-        } else{
+        } else {
             return ResultAndState.waitForMoreInput(this);
         }
     }
 
     @Override
     public ResultAndState handleException(H2DbException exception) {
-        resultFuture.trySetException(exception);
-        return ResultAndState.newState(new AnswerNextRequest(connection));
+        callback.onComplete(null, exception);
+        return ResultAndState.newState(new AnswerNextRequest(connection, entry));
     }
 
     private ResultAndState finishResultRead() {
-        eventHandler.endResults(accumulator);
-        resultFuture.trySetResult(accumulator);
-        return ResultAndState.newState(new AnswerNextRequest(connection));
+        try {
+            eventHandler.endResults(accumulator);
+        } catch (Exception any) {
+            failure = DbException.attachSuppressedOrWrap(any, entry, failure);
+        }
+        if (failure == null) {
+            callback.onComplete(accumulator, null);
+        } else {
+            callback.onComplete(null, failure);
+
+        }
+        return ResultAndState.newState(new AnswerNextRequest(connection, entry));
     }
 
 }

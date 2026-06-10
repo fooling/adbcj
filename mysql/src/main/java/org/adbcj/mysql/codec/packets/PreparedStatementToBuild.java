@@ -5,10 +5,7 @@ import org.adbcj.mysql.codec.MysqlType;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * @author roman.stoffel@gamlor.info
- * @since 12.04.12
- */
+
 public final class PreparedStatementToBuild extends ServerPacket {
     private final OkResponse.PreparedStatementOK preparedStatement;
     private final List<MysqlType> parametersTypes;

@@ -19,7 +19,6 @@ package org.adbcj;
 import java.sql.Types;
 
 /**
- * TODO Needs to be updated per http://code.google.com/p/adbcj/wiki/DataTypes
  * 
  * @author Mike Heath
  */
@@ -57,7 +56,7 @@ public enum Type {
 
 	private final int jdbcType;
 
-	private Type(int jdbcType) {
+	Type(int jdbcType) {
 		this.jdbcType = jdbcType;
 	}
 

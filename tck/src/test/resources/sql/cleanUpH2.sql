@@ -5,3 +5,6 @@ DROP TABLE IF EXISTS table_with_some_values;
 DROP TABLE IF EXISTS supporteddatatypes;
 DROP TABLE IF EXISTS textcontent;
 DROP TABLE IF EXISTS tablewithautoid;
+
+
+DROP USER IF EXISTS "ADBCJ-OTHER-USER";

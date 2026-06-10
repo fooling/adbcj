@@ -153,6 +153,12 @@ public enum MysqlCharacterSet {
 	private String charsetName;
 	private Charset charset;
 
+	/** Performance optimisation. Enum.values() does a internal clone, allocating new objects
+	 * It clones the array[], so that you cannot accidentally modify the original
+	 * To avoid that, we have our own copy, which does not need to be cloned
+	 */
+	private static final MysqlCharacterSet[] ALL_VALUES = values();
+
 	MysqlCharacterSet(byte id, String charsetName) {
 		 this.id = id;
 		 this.charsetName = charsetName;
@@ -164,7 +170,7 @@ public enum MysqlCharacterSet {
 	 }
 
 	public static MysqlCharacterSet findById(int id) {
-		 for (MysqlCharacterSet charset : values()) {
+		 for (MysqlCharacterSet charset : ALL_VALUES) {
 			 if (charset.id == id) {
 				 return charset;
 			 }
@@ -184,17 +190,4 @@ public enum MysqlCharacterSet {
 		return id;
 	}
 
-//	 public int encodedLength(CharSequence s) throws CharacterCodingException {
-//		 if (s == null || s.length() == 0) {
-//			 return 0;
-//		 }
-//		 if (charset == null) {
-//			 return 0;
-//		 }
-//		 IoBuffer buf = IoBuffer.allocate(1024);
-//		 buf.setAutoExpand(true);
-//		 buf.putString(s, charset.newEncoder());
-//
-//		 return buf.position();
-//	 }
 }

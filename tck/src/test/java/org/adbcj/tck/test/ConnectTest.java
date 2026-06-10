@@ -22,79 +22,78 @@ import org.testng.annotations.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import static org.testng.Assert.assertTrue;
 
-@Test(invocationCount =5, threadPoolSize = 5, timeOut = 30000)
-public class ConnectTest extends AbstractWithConnectionManagerTest{
+@Test(invocationCount = 5, threadPoolSize = 5, timeOut = 30000)
+public class ConnectTest extends AbstractWithConnectionManagerTest {
 
 
-	public void testConnectImmediateClose() throws Exception {
-		final CountDownLatch latch = new CountDownLatch(2);
+    public void testConnectImmediateClose() throws Exception {
+        final CountDownLatch latch = new CountDownLatch(2);
 
-		DbFuture<Connection> connectFuture = connectionManager.connect().addListener(new DbListener<Connection>() {
-			public void onCompletion(DbFuture<Connection> future) {
-				latch.countDown();
-			}
-		});
-		Connection connection = connectFuture.get(10, TimeUnit.SECONDS);
-		assertTrue(!connection.isClosed());
-		DbFuture<Void> closeFuture = connection.close().addListener(new DbListener<Void>() {
-			public void onCompletion(DbFuture<Void> future) {
+        Future<Connection> connectFuture = connectionManager.connect()
+                .thenApply(res -> {
+                    latch.countDown();
+                    return res;
+                });
+        Connection connection = connectFuture.get(10, TimeUnit.SECONDS);
+        assertTrue(!connection.isClosed());
+        Future<Void> closeFuture = connection.close()
+                .thenApply(res -> {
+                    latch.countDown();
+                    return res;
+                });
+        closeFuture.get(10, TimeUnit.SECONDS);
+        assertTrue(connection.isClosed());
+        latch.await(1, TimeUnit.SECONDS);
+    }
 
-				latch.countDown();
-			}
-		});
-		closeFuture.get(10, TimeUnit.SECONDS);
-		assertTrue(connection.isClosed());
-		latch.await(1, TimeUnit.SECONDS);
-	}
+    public void testConnectNonImmediateClose() throws Exception {
+        final CountDownLatch latch = new CountDownLatch(1);
 
-	public void testConnectNonImmediateClose() throws Exception {
-		final CountDownLatch latch = new CountDownLatch(1);
-
-		Connection connection = connectionManager.connect().get();
-		assertTrue(!connection.isClosed());
-		connection.close().addListener(new DbListener<Void>() {
-			public void onCompletion(DbFuture<Void> future) {
-				// Indicate that finalizeClose callback has been invoked
-				latch.countDown();
-			}
-		}).get();
-		assertTrue(connection.isClosed());
+        Connection connection = connectionManager.connect().get();
+        assertTrue(!connection.isClosed());
+        connection.close()
+                .thenApply(res -> {
+                    latch.countDown();
+                    return res;
+                }).get();
+        assertTrue(connection.isClosed());
         assertTrue(latch.await(2, TimeUnit.SECONDS));
-	}
+    }
 
     public void testConnectAndDisconnect() throws Exception {
-        final DbFuture<Connection> future = connectionManager.connect();
+        final Future<Connection> future = connectionManager.connect();
         Connection connection = future.get();
-        final DbFuture<Void> closeFuture = connection.close();
+        final Future<Void> closeFuture = connection.close();
         closeFuture.get();
     }
 
-	public void testNonImmediateClose() throws Exception {
-		Connection connection = connectionManager.connect().get();
+    public void testNonImmediateClose() throws Exception {
+        Connection connection = connectionManager.connect().get();
 
-		List<DbFuture<ResultSet>> futures = new ArrayList<DbFuture<ResultSet>>();
+        List<Future<ResultSet>> futures = new ArrayList<Future<ResultSet>>();
 
-		for (int i = 0; i <5; i++) {
-			futures.add(connection.executeQuery(String.format("SELECT *, %d FROM simple_values", i)));
-		}
-		try {
+        for (int i = 0; i < 5; i++) {
+            futures.add(connection.executeQuery(String.format("SELECT *, %d FROM simple_values", i)));
+        }
+        try {
             connection.close().get(100, TimeUnit.SECONDS);
-		} catch (TimeoutException e) {
-			for (DbFuture<ResultSet> future : futures) {
-				if (future.isDone()) {
-					future.get(); // Will throw exception if failed
-				} else {
-					throw new AssertionError("future " + future + " did not complete in time");
-				}
-			}
-			throw new AssertionError("finalizeClose future failed to complete");
-		}
-		assertTrue(connection.isClosed(), "Connection should be closed");
+        } catch (TimeoutException e) {
+            for (Future<ResultSet> future : futures) {
+                if (future.isDone()) {
+                    future.get(); // Will throw exception if failed
+                } else {
+                    throw new AssertionError("future " + future + " did not complete in time");
+                }
+            }
+            throw new AssertionError("finalizeClose future failed to complete");
+        }
+        assertTrue(connection.isClosed(), "Connection should be closed");
     }
 
 }

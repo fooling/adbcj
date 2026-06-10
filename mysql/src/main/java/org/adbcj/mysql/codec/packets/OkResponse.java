@@ -23,6 +23,7 @@ import org.adbcj.mysql.codec.IoUtils;
 import org.adbcj.mysql.codec.ServerStatus;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Set;
 
@@ -37,7 +38,7 @@ public abstract class OkResponse extends ServerPacket{
         long insertId = IoUtils.readBinaryLengthEncoding(toParse);
         Set<ServerStatus> serverStatus = IoUtils.readEnumSetShort(toParse, ServerStatus.class);
         int warningCount = IoUtils.readUnsignedShort(toParse);
-        String message = IoUtils.readFixedLengthString(toParse, toParse.getRemaining(), "UTF8");
+        String message = IoUtils.readFixedLengthString(toParse, toParse.getRemaining(), StandardCharsets.UTF_8);
         return new RegularOK(packetLength, packetNumber, affectedRows, insertId, serverStatus, warningCount, message);
     }
 

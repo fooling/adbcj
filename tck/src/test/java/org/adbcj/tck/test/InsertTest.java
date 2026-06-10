@@ -4,10 +4,7 @@ import org.adbcj.*;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * @author roman.stoffel@gamlor.info
- * @since 10.05.12
- */
+
 public class InsertTest extends AbstractWithConnectionManagerTest{
     @Test
     public void returnsAutoIncrement() throws Exception{
@@ -36,7 +33,8 @@ public class InsertTest extends AbstractWithConnectionManagerTest{
     @Test
     public void returnsAutoIncrementPreparedQuery() throws Exception{
         Connection connection = connectionManager.connect().get();
-        PreparedUpdate statement = connection.prepareUpdate("INSERT INTO tableWithAutoId (textData) " +
+        PreparedUpdate statement = connection.prepareUpdate(
+                "INSERT INTO tableWithAutoId (textData) " +
                 "VALUES (?)").get();
         Result result = statement.execute("value prepared").get();
 

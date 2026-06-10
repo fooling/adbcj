@@ -1,22 +1,20 @@
 package org.adbcj.h2.decoding;
 
 import io.netty.channel.Channel;
+import org.adbcj.DbCallback;
 import org.adbcj.h2.H2Connection;
 import org.adbcj.h2.H2DbException;
 import org.adbcj.h2.protocol.StatusCodes;
-import org.adbcj.support.DefaultDbFuture;
 
 import java.io.DataInputStream;
 import java.io.IOException;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
-public class CompleteTransaction extends StatusReadingDecoder {
-    final DefaultDbFuture<Void> toComplete;
 
-    public CompleteTransaction(DefaultDbFuture<Void> toComplete,H2Connection connection) {
-        super(connection);
+public class CompleteTransaction extends StatusReadingDecoder {
+    private final DbCallback<Void> toComplete;
+
+    public CompleteTransaction(DbCallback<Void> toComplete, H2Connection connection, StackTraceElement[] entry) {
+        super(connection, entry);
         this.toComplete = toComplete;
     }
 
@@ -29,8 +27,8 @@ public class CompleteTransaction extends StatusReadingDecoder {
         final ResultOrWait<Integer> okStatus = IoUtils.tryReadNextInt(stream, autoCommit);
         if (okStatus.couldReadResult) {
             StatusCodes.STATUS_OK.expectStatusOrThrow(okStatus.result);
-            toComplete.trySetResult(null);
-            return ResultAndState.newState(new AnswerNextRequest(connection));
+            toComplete.onComplete(null, null);
+            return ResultAndState.newState(new AnswerNextRequest(connection, entry));
         } else {
             return ResultAndState.waitForMoreInput(this);
         }
@@ -38,6 +36,7 @@ public class CompleteTransaction extends StatusReadingDecoder {
 
     @Override
     protected void requestFailedContinue(H2DbException exception) {
+        assert exception!=null;
         throw exception;
     }
 }

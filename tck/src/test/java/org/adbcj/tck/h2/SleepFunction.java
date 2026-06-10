@@ -1,7 +1,7 @@
 package org.adbcj.tck.h2;
 
 /**
- * @author roman.stoffel@gamlor.info
+ * Used in test suite to artificially delay a response
  */
 public class SleepFunction {
     public static int sleep(int value) {

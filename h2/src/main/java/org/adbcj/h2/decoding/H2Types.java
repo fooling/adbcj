@@ -6,10 +6,6 @@ import java.math.BigDecimal;
 import java.sql.Time;
 import java.sql.Timestamp;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
-
 public enum H2Types {
 
 
@@ -40,7 +36,7 @@ public enum H2Types {
     private final Type type;
     private final Class className;
 
-    private H2Types(int id, Type type, Class className) {
+    H2Types(int id, Type type, Class className) {
         this.id = id;
         this.type = type;
         this.className = className;

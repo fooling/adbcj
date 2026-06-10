@@ -58,6 +58,11 @@ public enum MysqlType {
 	private final int id;
 	private final Type type;
 	private final String className;
+	/** Performance optimisation. Enum.values() does a internal clone, allocating new objects
+	 * It clones the array[], so that you cannot accidentally modify the original
+	 * To avoid that, we have our own copy, which does not need to be cloned
+	 */
+	private static final MysqlType[] ALL_VALUES = values();
 
 	MysqlType(int id, Type type, Class javaType) {
 		this.id = id;
@@ -74,7 +79,7 @@ public enum MysqlType {
 	}
 
 	public static MysqlType findById(int id) {
-		for (MysqlType type : values()) {
+		for (MysqlType type : ALL_VALUES) {
 			if (id == type.id) {
 				return type;
 			}

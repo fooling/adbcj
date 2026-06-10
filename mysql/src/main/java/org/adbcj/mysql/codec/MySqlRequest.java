@@ -1,25 +1,23 @@
 package org.adbcj.mysql.codec;
 
+import org.adbcj.DbCallback;
 import org.adbcj.mysql.codec.decoding.DecoderState;
-import org.adbcj.support.DefaultDbFuture;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
-public class MySqlRequest {
-    private final String description;
-    private final DefaultDbFuture toComplete;
-    private final DecoderState startState;
-    private final ClientRequest request;
+
+public class MySqlRequest<T> {
+    public final String description;
+    public final DecoderState startState;
+    public final ClientRequest request;
+    public final DbCallback<T> callback;
 
     MySqlRequest(String description,
-                 DefaultDbFuture toComplete,
                  DecoderState startState,
-                 ClientRequest request) {
+                 ClientRequest request,
+                 DbCallback<T> callback) {
         this.description = description;
-        this.toComplete = toComplete;
         this.startState = startState;
         this.request = request;
+        this.callback = callback;
     }
 
     @Override
@@ -27,15 +25,5 @@ public class MySqlRequest {
         return "MySqlRequest{"+ description +  '}';
     }
 
-    public ClientRequest getRequest() {
-        return request;
-    }
 
-    public DecoderState getDecoderState() {
-        return startState;
-    }
-
-    public DefaultDbFuture getFuture() {
-        return toComplete;
-    }
 }

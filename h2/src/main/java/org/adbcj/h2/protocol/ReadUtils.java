@@ -12,9 +12,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class ReadUtils {
     public static ResultOrWait<Value> tryReadValue(DataInputStream stream, ResultOrWait<Integer> maybeType) throws IOException {
         if (!maybeType.couldReadResult) {
@@ -74,7 +72,7 @@ public class ReadUtils {
         if (!maybeValue.couldReadResult) {
             return ResultOrWait.WaitLonger;
         } else {
-            return ResultOrWait.result((Value) new DefaultValue(maybeValue.result));
+            return ResultOrWait.result(new DefaultValue(maybeValue.result));
         }
     }
 
@@ -82,7 +80,7 @@ public class ReadUtils {
         if (!maybeValue.couldReadResult) {
             return ResultOrWait.WaitLonger;
         } else {
-            return ResultOrWait.result((Value) new DefaultValue(new BigDecimal(maybeValue.result)));
+            return ResultOrWait.result(new DefaultValue(new BigDecimal(maybeValue.result)));
         }
     }
 
@@ -90,7 +88,7 @@ public class ReadUtils {
         if (!maybeValue.couldReadResult) {
             return ResultOrWait.WaitLonger;
         } else {
-            return ResultOrWait.result((Value) new DefaultValue(DateTimeUtils.convertNanoToTime(maybeValue.result)));
+            return ResultOrWait.result(new DefaultValue(DateTimeUtils.convertNanoToTime(maybeValue.result)));
         }
     }
 
@@ -98,13 +96,13 @@ public class ReadUtils {
         if (!maybeValue.couldReadResult) {
             return ResultOrWait.WaitLonger;
         } else {
-            return ResultOrWait.result((Value) new DefaultValue(DateTimeUtils.convertDateValueToDate(maybeValue.result)));
+            return ResultOrWait.result(new DefaultValue(DateTimeUtils.convertDateValueToDate(maybeValue.result)));
         }
     }
 
     static ResultOrWait<Value> convertToTimestampValue(ResultOrWait<Long> dateValue,ResultOrWait<Long> nanos) {
         if (dateValue.couldReadResult && nanos.couldReadResult) {
-            return ResultOrWait.result((Value) new DefaultValue(
+            return ResultOrWait.result(new DefaultValue(
                     DateTimeUtils.convertDateValueToTimestamp(dateValue.result,nanos.result)));
         } else {
             return ResultOrWait.WaitLonger;

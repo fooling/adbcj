@@ -1,50 +1,54 @@
 package org.adbcj.mysql.codec.decoding;
 
-import org.adbcj.Result;
-import org.adbcj.mysql.codec.MySqlConnection;
+import org.adbcj.DbCallback;
+import org.adbcj.mysql.MySqlConnection;
 import org.adbcj.mysql.codec.MysqlResult;
 import org.adbcj.mysql.codec.packets.OkResponse;
-import org.adbcj.support.DefaultDbFuture;
 import org.adbcj.support.OneArgFunction;
 
 import java.util.ArrayList;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
-public class ExpectUpdateResult<T> extends ExpectOK {
+
+public class ExpectUpdateResult<T> extends ExpectOK<T> {
 
     private final OneArgFunction<MysqlResult, T> transformation;
 
-    public ExpectUpdateResult(DefaultDbFuture<Result> future,
-                              MySqlConnection connection) {
-        this(future,connection,OneArgFunction.ID_FUNCTION);
+    public ExpectUpdateResult(MySqlConnection connection,
+                              DbCallback<T> callback,
+                              StackTraceElement[] entry
+    ) {
+        this(connection, callback, entry, OneArgFunction.ID_FUNCTION);
     }
-    public ExpectUpdateResult(DefaultDbFuture<Result> future,
-                              MySqlConnection connection,
-                              OneArgFunction<MysqlResult,T> transformation) {
-        super(future,connection);
+
+    public ExpectUpdateResult(
+            MySqlConnection connection,
+            DbCallback<T> callback,
+            StackTraceElement[] entry,
+            OneArgFunction<MysqlResult, T> transformation) {
+        super(connection, callback, entry);
         this.transformation = transformation;
     }
 
     @Override
     protected ResultAndState handleOk(OkResponse.RegularOK regularOK) {
-        return handleUpdateResult(regularOK,
-                (DefaultDbFuture<T>) futureToComplete,
+        return handleUpdateResult(
                 connection,
+                regularOK,
+                callback,
                 transformation);
     }
 
-    static <TFutureType> ResultAndState handleUpdateResult(OkResponse.RegularOK regularOK,
-                                                 DefaultDbFuture<TFutureType> futureToComplete,
-                                                 MySqlConnection connection,
-                                                 OneArgFunction<MysqlResult,TFutureType> transformation) {
+    static <TFutureType> ResultAndState handleUpdateResult(
+            MySqlConnection connection,
+            OkResponse.RegularOK regularOK,
+            DbCallback<TFutureType> futureToComplete,
+            OneArgFunction<MysqlResult, TFutureType> transformation) {
         ArrayList<String> warnings = new ArrayList<String>(regularOK.getWarningCount());
         for (int i = 0; i < regularOK.getWarningCount(); i++) {
             warnings.add(regularOK.getMessage());
         }
-        MysqlResult result = new MysqlResult(regularOK.getAffectedRows(),warnings,regularOK.getInsertId());
-        futureToComplete.trySetResult(transformation.apply(result));
-        return new ResultAndState(new AcceptNextResponse(connection),regularOK );
+        MysqlResult result = new MysqlResult(regularOK.getAffectedRows(), warnings, regularOK.getInsertId());
+        futureToComplete.onComplete(transformation.apply(result), null);
+        return new ResultAndState(new AcceptNextResponse(connection), regularOK);
     }
 }

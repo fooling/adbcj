@@ -1,54 +1,72 @@
 package org.adbcj.mysql.codec.decoding;
 
 import io.netty.channel.Channel;
+import org.adbcj.DbCallback;
+import org.adbcj.DbException;
 import org.adbcj.ResultHandler;
 import org.adbcj.mysql.codec.BoundedInputStream;
-import org.adbcj.mysql.codec.MySqlConnection;
+import org.adbcj.mysql.MySqlConnection;
 import org.adbcj.mysql.codec.MysqlField;
 import org.adbcj.mysql.codec.packets.EofResponse;
-import org.adbcj.support.DefaultDbFuture;
 
 import java.io.IOException;
 import java.util.List;
 
-/**
-* @since 12.04.12
-*/
-class FieldEof<T> extends DecoderState {
 
+class FieldEof<T> extends DecoderState {
     private final List<MysqlField> fields;
-    private final DefaultDbFuture<T> future;
     private final MySqlConnection connection;
     private final ResultHandler<T> eventHandler;
     private final T accumulator;
+    private final DbCallback<T> callback;
+    private final StackTraceElement[] entry;
     private Row.RowDecodingType decodingType;
+    private DbException failure;
 
-    public FieldEof(Row.RowDecodingType decodingType,
-                    List<MysqlField> fields,
-                    DefaultDbFuture<T> future,
-                    MySqlConnection connection,
-                    ResultHandler<T> eventHandler,
-                    T accumulator) {
+    public FieldEof(
+            MySqlConnection connection,
+            Row.RowDecodingType decodingType,
+            List<MysqlField> fields,
+            ResultHandler<T> eventHandler,
+            T accumulator,
+            DbCallback<T> callback,
+            StackTraceElement[] entry,
+            DbException failure) {
         this.decodingType = decodingType;
         this.fields = fields;
-        this.future = future;
+        this.callback = sandboxCallback(callback);
         this.connection = connection;
         this.eventHandler = eventHandler;
         this.accumulator = accumulator;
+        this.entry = entry;
+        this.failure = failure;
     }
 
     @Override
     public ResultAndState parse(int length, int packetNumber, BoundedInputStream in, Channel channel) throws IOException {
         int fieldCount = in.read();
 
-        eventHandler.endFields(accumulator);
-        eventHandler.startResults(accumulator);
+        try{
+            eventHandler.endFields(accumulator);
+            eventHandler.startResults(accumulator);
+        } catch (Exception ex){
+            this.failure = DbException.attachSuppressedOrWrap(ex, entry, failure);
+        }
 
         if (fieldCount != RESPONSE_EOF) {
             throw new IllegalStateException("Expected an EOF response from the server");
         }
         EofResponse fieldEof = decodeEofResponse(in, length, packetNumber, EofResponse.Type.FIELD);
-        return result(new Row<T>(decodingType, fields,future,connection,eventHandler,accumulator),fieldEof);
+        return result(new Row<T>(
+                        connection,
+                        decodingType,
+                        fields,
+                        eventHandler,
+                        accumulator,
+                        callback,
+                        entry,
+                        failure),
+                fieldEof);
     }
 
     @Override

@@ -195,7 +195,7 @@ public class TransactionTest extends AbstractWithConnectionManagerTest{
             connection.commit().get();
 
 
-            result = connection.executeUpdate("INSERT INTO updates (id) VALUES (2)").get();
+            connection.executeUpdate("INSERT INTO updates (id) VALUES (2)").get();
 
             // Make sure both connections can see data
             ResultSet rs = connection2.executeQuery("SELECT id FROM updates").get();

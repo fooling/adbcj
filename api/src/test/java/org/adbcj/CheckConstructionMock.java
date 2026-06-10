@@ -1,10 +1,10 @@
 package org.adbcj;
 
+import org.adbcj.support.ConnectionManagerFactory;
+
 import java.util.Map;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class CheckConstructionMock implements ConnectionManagerFactory {
     private static ThreadLocal<CheckConstructionManager> lastInstance = new ThreadLocal<CheckConstructionManager>();
 

@@ -1,8 +1,6 @@
 package org.adbcj.h2.decoding;
 
-/**
-* @author roman.stoffel@gamlor.info
-*/
+
 public final class ResultOrWait<T>{
     public final T result;
     public final boolean couldReadResult;

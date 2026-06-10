@@ -1,33 +1,30 @@
 package org.adbcj.h2.decoding;
 
+import org.adbcj.DbCallback;
 import org.adbcj.h2.H2Connection;
 import org.adbcj.h2.H2DbException;
-import org.adbcj.support.DefaultDbFuture;
 import io.netty.channel.Channel;
 
 import java.io.DataInputStream;
 import java.io.IOException;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public final class ClosedConnectionState extends StatusReadingDecoder {
+    private final DbCallback<Void> finishedClose;
 
-    private final DefaultDbFuture<Void> finishedClose;
-
-    public ClosedConnectionState(DefaultDbFuture<Void> finishedClose, H2Connection connection) {
-        super(connection);
+    ClosedConnectionState(DbCallback<Void> finishedClose, H2Connection connection, StackTraceElement[] entry) {
+        super(connection, entry);
         this.finishedClose = finishedClose;
     }
 
     @Override
     protected ResultAndState processFurther(DataInputStream stream, Channel channel, int status) throws IOException {
-        finishedClose.trySetResult(null);
+        finishedClose.onComplete(null, null);
         return ResultAndState.waitForMoreInput(this);
     }
 
     @Override
     protected void requestFailedContinue(H2DbException exception) {
-        finishedClose.trySetException(exception);
+        finishedClose.onComplete(null, exception);
     }
 }

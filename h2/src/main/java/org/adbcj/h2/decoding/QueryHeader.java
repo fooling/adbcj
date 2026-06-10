@@ -1,32 +1,34 @@
 package org.adbcj.h2.decoding;
 
 import io.netty.channel.Channel;
+import org.adbcj.DbCallback;
+import org.adbcj.DbException;
 import org.adbcj.ResultHandler;
 import org.adbcj.h2.H2Connection;
 import org.adbcj.h2.H2DbException;
-import org.adbcj.h2.packets.SizeConstants;
+import org.adbcj.support.SizeConstants;
 import org.adbcj.h2.protocol.StatusCodes;
-import org.adbcj.support.DefaultDbFuture;
 
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class QueryHeader<T> extends StatusReadingDecoder {
     private final ResultHandler<T> eventHandler;
     private final T accumulator;
-    private final DefaultDbFuture<T> resultFuture;
+    private final DbCallback<T> callback;
+    private DbException failure;
 
-    public QueryHeader(ResultHandler<T> eventHandler,
+    public QueryHeader(H2Connection connection,
+                       ResultHandler<T> eventHandler,
                        T accumulator,
-                       DefaultDbFuture<T> resultFuture,
-                       H2Connection connection) {
-        super(connection);
+                       DbCallback<T> callback,
+                       StackTraceElement[] entry) {
+        super(connection, entry);
         this.eventHandler = eventHandler;
         this.accumulator = accumulator;
-        this.resultFuture = resultFuture;
+        this.callback = callback;
     }
 
     @Override
@@ -35,19 +37,27 @@ public class QueryHeader<T> extends StatusReadingDecoder {
                                             int status) throws IOException {
         StatusCodes.STATUS_OK.expectStatusOrThrow(status);
 
-        if(stream.available()< (SizeConstants.INT_SIZE +SizeConstants.INT_SIZE)){
+        if (stream.available() < (SizeConstants.INT_SIZE + SizeConstants.INT_SIZE)) {
             return ResultAndState.waitForMoreInput(this);
-        }  else{
+        } else {
             int columnCount = stream.readInt();
             int rowCount = stream.readInt();
-            eventHandler.startFields(accumulator);
+            try{
+                eventHandler.startFields(accumulator);
+            } catch (Exception any){
+                failure = DbException.wrap(any, entry);
+            }
             return ResultAndState.newState(
-                    new ColumnDecoder<T>(eventHandler,
-                            accumulator,
-                            resultFuture,
+                    new ColumnDecoder<T>(
                             connection,
+                            eventHandler,
+                            accumulator,
+                            failure,
+                            callback,
+                            entry,
                             rowCount,
-                            columnCount)
+                            columnCount,
+                            new ArrayList<>())
             );
         }
 
@@ -55,7 +65,7 @@ public class QueryHeader<T> extends StatusReadingDecoder {
 
     @Override
     protected void requestFailedContinue(H2DbException exception) {
-        this.resultFuture.setException(exception);
+        callback.onComplete(null, exception);
     }
 }
 

@@ -1,21 +1,16 @@
 package org.adbcj.mysql.codec.decoding;
 
-import org.adbcj.mysql.codec.BoundedInputStream;
-import org.adbcj.mysql.codec.IoUtils;
-import org.adbcj.mysql.codec.MySqlConnection;
-import org.adbcj.mysql.codec.packets.ErrorResponse;
-import org.adbcj.mysql.codec.packets.OkResponse;
-import io.netty.channel.Channel;
-
 import java.io.IOException;
 
-/**
-* @author roman.stoffel@gamlor.info
-* @since 12.04.12
-*/
+import org.adbcj.mysql.MySqlConnection;
+import org.adbcj.mysql.codec.BoundedInputStream;
+import org.adbcj.mysql.codec.packets.ErrorResponse;
+import org.adbcj.mysql.codec.packets.OkResponse;
+
+import io.netty.channel.Channel;
+
 public abstract class ResponseStart extends DecoderState {
-    public static final int RESPONSE_OK = 0x00;
-    public static final int RESPONSE_ERROR = 0xff;
+	
     protected final MySqlConnection connection;
 
     protected ResponseStart(MySqlConnection connection) {
@@ -54,13 +49,5 @@ public abstract class ResponseStart extends DecoderState {
         throw new IllegalStateException("This state: "+this+" does not expect a result which can be interpreted as " +
                 "query result");
     }
-
-
-    public static ErrorResponse decodeErrorResponse(BoundedInputStream in, int length, int packetNumber) throws IOException {
-        int errorNumber = IoUtils.readUnsignedShort(in);
-        in.read(); // Throw away sqlstate marker
-        String sqlState = IoUtils.readNullTerminatedString(in, CHARSET);
-        String message = IoUtils.readNullTerminatedString(in, CHARSET);
-        return new ErrorResponse(length, packetNumber, errorNumber, sqlState, message);
-    }
+    
 }

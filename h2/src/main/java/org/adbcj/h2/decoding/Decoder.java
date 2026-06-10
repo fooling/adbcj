@@ -2,45 +2,55 @@ package org.adbcj.h2.decoding;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import org.adbcj.Connection;
+import org.adbcj.DbCallback;
 import org.adbcj.h2.H2Connection;
-import org.adbcj.support.DefaultDbFuture;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.DataInputStream;
 import java.io.InputStream;
 import java.util.List;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class Decoder extends ByteToMessageDecoder {
-    public static Object DecodedToken = new Object();
+	private static final Logger logger = LoggerFactory.getLogger(Decoder.class);
+	
+    private static Object DecodedToken = new Object();
     private DecoderState currentState;
     private H2Connection connection;
 
-    public Decoder(DefaultDbFuture<Connection> initialStateCompletion, H2Connection connection) {
-        currentState = new FirstServerHandshake(initialStateCompletion,connection);
+    public Decoder(DbCallback<Connection> initialStateCompletion, H2Connection connection, StackTraceElement[] entry) {
+        currentState = new FirstServerHandshake(initialStateCompletion, connection, entry);
+        this.connection = connection;
+    }
+
+    public Decoder(DecoderState currentState, H2Connection connection, StackTraceElement[] entry) {
+        this.currentState = currentState;
         this.connection = connection;
     }
 
     @Override
     public void decode(ChannelHandlerContext ctx, ByteBuf buffer, List<Object> out) throws Exception {
+    	// debug received packet since 2017-09-19 pzp
+    	if(logger.isDebugEnabled()) {
+    		final int ri = buffer.readerIndex(), length = buffer.readableBytes();
+    		logger.debug("Packet recv: \n{}", ByteBufUtil.prettyHexDump(buffer, ri, length));
+    	}
         InputStream in = new ByteBufInputStream(buffer);
         in.mark(Integer.MAX_VALUE);
         try {
-            final ResultAndState resultState = currentState.decode(new DataInputStream(in),ctx.channel());
+            final ResultAndState resultState = currentState.decode(new DataInputStream(in), ctx.channel());
             currentState = resultState.getNewState();
-            if(resultState.isWaitingForMoreInput()){
+            if (resultState.isWaitingForMoreInput()) {
                 in.reset();
-            } else{
+            } else {
                 out.add(DecodedToken);
             }
-        } catch (Exception ex){
-            ex.printStackTrace();
-            throw ex;
-        }finally {
+        } finally {
             in.close();
         }
     }
@@ -48,6 +58,6 @@ public class Decoder extends ByteToMessageDecoder {
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         super.channelInactive(ctx);
-        connection.tryCompleteClose();
+        connection.tryCompleteClose(null);
     }
 }

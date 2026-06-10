@@ -4,12 +4,10 @@ import org.adbcj.*;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class PreparedUpdateTest extends AbstractWithConnectionManagerTest{
     @Test
-    public void testCanInsert() throws DbException, InterruptedException {
+    public void testCanInsert() throws Exception {
         Connection connection = connectionManager.connect().get();
         cleanUp(connection);
         PreparedUpdate insert
@@ -33,7 +31,7 @@ public class PreparedUpdateTest extends AbstractWithConnectionManagerTest{
         connection.close();
     }
 
-    private void cleanUp(Connection connection) throws InterruptedException {
+    private void cleanUp(Connection connection) throws Exception {
         connection.executeUpdate("DELETE FROM updates").get();
     }
 }

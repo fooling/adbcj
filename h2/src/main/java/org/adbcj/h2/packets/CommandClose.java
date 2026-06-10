@@ -1,27 +1,25 @@
 package org.adbcj.h2.packets;
 
-import org.adbcj.support.CancellationToken;
-import org.adbcj.support.DefaultDbFuture;
+import org.adbcj.DbCallback;
+import org.adbcj.support.SizeConstants;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class CommandClose extends ClientToServerPacket {
     public static final int COMMAND_CLOSE = 4;
     private int id;
     // Some close requests have no response, so we close as soon as we've sent the command
-    private final DefaultDbFuture<Void> optionalCloseOnSent;
+    private final DbCallback<Void> optionalCloseOnSent;
 
     public CommandClose(int id) {
-        super(CancellationToken.NO_CANCELLATION);
+        super();
         this.id = id;
         this.optionalCloseOnSent = null;
     }
-    public CommandClose(int id, DefaultDbFuture<Void> optionalCloseOnSent) {
-        super(CancellationToken.NO_CANCELLATION);
+    public CommandClose(int id, DbCallback<Void> optionalCloseOnSent) {
+        super();
         this.id = id;
         this.optionalCloseOnSent = optionalCloseOnSent;
     }
@@ -31,7 +29,7 @@ public class CommandClose extends ClientToServerPacket {
         stream.writeInt(COMMAND_CLOSE);
         stream.writeInt(id);
         if(null!=optionalCloseOnSent){
-            optionalCloseOnSent.trySetResult(null);
+            optionalCloseOnSent.onComplete(null,null);
         }
     }
 

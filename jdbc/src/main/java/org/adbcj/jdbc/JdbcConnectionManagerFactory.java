@@ -17,7 +17,7 @@
 package org.adbcj.jdbc;
 
 import org.adbcj.ConnectionManager;
-import org.adbcj.ConnectionManagerFactory;
+import org.adbcj.support.ConnectionManagerFactory;
 import org.adbcj.DbException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,7 +50,7 @@ public class JdbcConnectionManagerFactory implements ConnectionManagerFactory {
 			return new JdbcConnectionManager(new PlainJDBCConnection(jdbcUrl, username, password, properties),
                     properties);
 		} catch (URISyntaxException e) {
-			throw new DbException(e);
+			throw DbException.wrap(e);
 		}
 	}
 

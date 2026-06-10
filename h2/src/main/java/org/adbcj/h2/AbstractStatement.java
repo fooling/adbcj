@@ -1,17 +1,15 @@
 package org.adbcj.h2;
 
-import org.adbcj.DbFuture;
+import org.adbcj.DbCallback;
 import org.adbcj.PreparedStatement;
-import org.adbcj.support.DefaultDbFuture;
+import org.adbcj.support.CloseOnce;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class AbstractStatement implements PreparedStatement {
     protected final H2Connection connection;
     protected final int sessionId;
     protected final int paramsCount;
-    private volatile DefaultDbFuture<Void> closeFuture =null;
+    private final CloseOnce closer = new CloseOnce();
 
     public AbstractStatement(H2Connection connection, int sessionId, int paramsCount) {
         this.paramsCount = paramsCount;
@@ -21,20 +19,20 @@ public class AbstractStatement implements PreparedStatement {
 
     @Override
     public boolean isClosed() {
-        return closeFuture!=null;
+        return closer.isClose();
     }
 
     @Override
-    public DbFuture<Void> close() {
-        synchronized (connection.connectionLock()){
-            if(null!=closeFuture){
-                return closeFuture;
-            } else{
-                final Request request = connection.requestCreator().executeCloseStatement(sessionId);
-                this.closeFuture = (DefaultDbFuture<Void>) request.getToComplete();
-                connection.forceQueRequest(request);
-                return closeFuture;
-            }
+    public void close(DbCallback<Void> callback) {
+        synchronized (connection.connectionLock()) {
+            StackTraceElement[] entry = connection.stackTraces.captureStacktraceAtEntryPoint();
+            closer.requestClose(callback, () -> {
+                Request<Void> req = connection.requestCreator().executeCloseStatement(
+                        sessionId,
+                        (res, error) -> closer.didClose(error),
+                        entry);
+                connection.forceQueRequest(req);
+            });
         }
     }
 }

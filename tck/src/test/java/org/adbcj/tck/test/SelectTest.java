@@ -23,51 +23,43 @@ import org.testng.annotations.Test;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
+
 
 
 @Test(invocationCount = 10, threadPoolSize = 4, timeOut = 50000)
 public class SelectTest extends AbstractWithConnectionManagerTest {
+
 
     public void testSelectWhichReturnsNothing() throws Exception {
         Connection connection = connectionManager.connect().get();
         final CountDownLatch latch = new CountDownLatch(1);
         ResultSet resultSet = connection.executeQuery("SELECT int_val, str_val " +
                 "FROM simple_values where str_val " +
-                "LIKE 'Not-In-Database-Value'").addListener(new DbListener<ResultSet>() {
-            public void onCompletion(DbFuture<ResultSet> future) {
-                try {
-                    Assert.assertNotNull(future.get());
+                "LIKE 'Not-In-Database-Value'")
+                .whenComplete((res, err) -> {
+                    Assert.assertNotNull(res);
+                    Assert.assertNull(err);
                     latch.countDown();
-                } catch (InterruptedException e) {
-                    throw new AssertionError(e);
-                }
-            }
-        }).get();
+                }).get();
         Iterator<Row> i = resultSet.iterator();
         Assert.assertFalse(i.hasNext());
 
         connection.close();
     }
 
-    public void testSimpleSelect() throws DbException, InterruptedException {
+    public void testSimpleSelect() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
 
         Connection connection = connectionManager.connect().get();
         try {
             ResultSet resultSet = connection.executeQuery("SELECT int_val, str_val " +
                     "FROM simple_values " +
-                    "ORDER BY int_val").addListener(new DbListener<ResultSet>() {
-                public void onCompletion(DbFuture<ResultSet> future) {
-                    try {
-                        Assert.assertNotNull(future.get());
-                        latch.countDown();
-                    } catch (InterruptedException e) {
-                        throw new AssertionError(e);
-                    }
-                }
+                    "ORDER BY int_val")
+            .whenComplete((res, err) -> {
+                Assert.assertNotNull(res);
+                Assert.assertNull(err);
+                latch.countDown();
             }).get();
 
             Assert.assertEquals(6, resultSet.size());
@@ -111,7 +103,7 @@ public class SelectTest extends AbstractWithConnectionManagerTest {
         }
     }
 
-    public void testSelectWithNullFields() throws DbException, InterruptedException {
+    public void testSelectWithNullFields() throws Exception {
         Connection connection = connectionManager.connect().get();
 
         ResultSet resultSet = connection.executeQuery("SELECT * FROM `table_with_some_values` WHERE `can_be_null_int` IS NULL").get();
@@ -126,14 +118,14 @@ public class SelectTest extends AbstractWithConnectionManagerTest {
     public void testMultipleSelectStatements() throws Exception {
         Connection connection = connectionManager.connect().get();
 
-        List<DbFuture<ResultSet>> futures = new LinkedList<DbFuture<ResultSet>>();
+        List<Future<ResultSet>> futures = new LinkedList<Future<ResultSet>>();
         for (int i = 0; i < 50; i++) {
             futures.add(
                     connection.executeQuery(String.format("SELECT *, %d FROM simple_values", i))
             );
         }
 
-        for (DbFuture<ResultSet> future : futures) {
+        for (Future<ResultSet> future : futures) {
             try {
                 future.get(5, TimeUnit.MINUTES);
             } catch (TimeoutException e) {
@@ -146,8 +138,9 @@ public class SelectTest extends AbstractWithConnectionManagerTest {
         Connection connection = connectionManager.connect().get();
 
 
-        DbFuture<StringBuilder> resultFuture = connection.executeQuery("SELECT str_val FROM simple_values " +
-                "WHERE str_val LIKE 'Zero'", buildStringInCallback(), new StringBuilder());
+        Future<StringBuilder> resultFuture = connection.executeQuery(
+                "SELECT str_val FROM simple_values " +
+                        "WHERE str_val LIKE 'Zero'", buildStringInCallback(), new StringBuilder());
 
         StringBuilder result = resultFuture.get();
         Assert.assertEquals(result.toString().toLowerCase(), expectedStringFromCallback());
@@ -159,92 +152,117 @@ public class SelectTest extends AbstractWithConnectionManagerTest {
     public void testExceptionInCallbackHandler() throws Exception {
         Connection connection = connectionManager.connect().get();
 
-        final CountDownLatch latch = new CountDownLatch(1);
-        DbFuture<StringBuilder> resultFuture = connection.executeQuery("SELECT str_val FROM simple_values " +
-                "WHERE str_val LIKE 'Zero'", new AbstractResultHandler<StringBuilder>() {
-            @Override
-            public void startFields(StringBuilder accumulator) {
-                throw new RuntimeException("Failure here");
+        int throwOn = 0;
+        boolean stillHasToExplore = true;
+        while (stillHasToExplore) {
+            System.out.println("Testing failure on " + throwOn);
+            ExceptionOnCall faultyHandler = new ExceptionOnCall(throwOn);
+
+            Future<StringBuilder> resultFuture = connection.executeQuery(
+                    "SELECT str_val FROM simple_values " +
+                            "WHERE str_val LIKE 'Zero'",
+                    faultyHandler,
+                    new StringBuilder());
+            try {
+                resultFuture.get();
+                Assert.fail("Expected exception to be propagated");
+            } catch (ExecutionException e) {
+                Assert.assertTrue(e.getCause() instanceof DbException);
+                Assert.assertTrue(e.getMessage().contains("Failure call no " + throwOn));
             }
 
-            @Override
-            public void exception(Throwable t, StringBuilder accumulator) {
-                latch.countDown();
-            }
-        }, new StringBuilder());
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS), "Expect that exception method is called");
-        try {
-            resultFuture.get();
-            Assert.fail("Expected exception to be propagated");
-        } catch (DbException e) {
-            Assert.assertTrue(e.getMessage().contains("Failure here"));
-
+            stillHasToExplore = !faultyHandler.didThrowLastCall();
+            throwOn++;
         }
+
+
     }
 
     public void testTwoSelectsAfterEachOther() throws Exception {
         Connection connection = connectionManager.connect().get();
 
 
-        DbFuture<ResultSet> firstCall = connection.executeQuery("SELECT str_val FROM simple_values " +
+        Future<ResultSet> firstCall = connection.executeQuery("SELECT str_val FROM simple_values " +
                 "WHERE str_val LIKE 'One'");
-        DbFuture<ResultSet> nextCall = connection.executeQuery("SELECT str_val FROM simple_values " +
+        Future<ResultSet> nextCall = connection.executeQuery("SELECT str_val FROM simple_values " +
                 "WHERE str_val LIKE 'Two'");
 
         String firstResult = firstCall.get().get(0).get(0).getString();
-        Assert.assertEquals(firstResult,"One");
+        Assert.assertEquals(firstResult, "One");
         String secondResult = nextCall.get().get(0).get(0).getString();
-        Assert.assertEquals(secondResult,"Two");
+        Assert.assertEquals(secondResult, "Two");
     }
 
     public void testExceptionInCallbackHandlerDoesNotAffectNextCall() throws Exception {
         Connection connection = connectionManager.connect().get();
 
-        DbFuture<StringBuilder> errorCause = connection.executeQuery("SELECT str_val FROM simple_values " +
-                "WHERE str_val LIKE 'Zero'", new AbstractResultHandler<StringBuilder>() {
-            @Override
-            public void startFields(StringBuilder accumulator) {
-                throw new RuntimeException("Failure here");
-            }
-        }, new StringBuilder());
-        ResultSet nextCall = connection.executeQuery("SELECT str_val FROM simple_values " +
-                "WHERE str_val LIKE 'Two'").get();
+        Future<StringBuilder> errorCause = connection.executeQuery(
+                "SELECT str_val FROM simple_values " +
+                        "WHERE str_val LIKE 'Zero'", new ExceptionOnCall(0), new StringBuilder());
+        ResultSet nextCall = connection.executeQuery(
+                "SELECT str_val FROM simple_values " +
+                        "WHERE str_val LIKE 'Two'").get();
         try {
             errorCause.get();
             Assert.fail("Expect failed result");
-        } catch (DbException ex){
+        } catch (ExecutionException ex) {
+            Assert.assertTrue(ex.getCause() instanceof DbException);
             // expected
         }
         String result = nextCall.get(0).get(0).getString();
-        Assert.assertEquals(result,"Two");
+        Assert.assertEquals(result, "Two");
     }
 
 
     public void testBrokenSelect() throws Exception {
         Connection connection = connectionManager.connect().get();
 
-        DbFuture<ResultSet> future = connection.executeQuery("SELECT broken_query");
+        Future<ResultSet> future = connection.executeQuery("SELECT broken_query");
         try {
             future.get(5, TimeUnit.SECONDS);
             throw new AssertionError("Issues a bad query, future should have failed");
-        } catch (DbException e) {
+        } catch (ExecutionException e) {
             // Pass
+            Assert.assertTrue(e.getCause() instanceof DbException);
+        } finally {
+            connection.close().get();
+        }
+    }
+
+    public void testFollowBrokenSelectWithValid() throws Exception {
+        Connection connection = connectionManager.connect().get();
+
+        Future<ResultSet> future = connection.executeQuery("SELECT broken_query");
+        try {
+            future.get(5, TimeUnit.SECONDS);
+            throw new AssertionError("Issues a bad query, future should have failed");
+        } catch (ExecutionException e) {
+            Assert.assertTrue(e.getCause() instanceof DbException);
+            // Pass
+            Future<ResultSet> followUp = connection.executeQuery(
+                    "SELECT int_val AS number, str_val AS otherName " +
+                            "FROM simple_values " +
+                            "WHERE str_val LIKE 'Two'");
+            final ResultSet values = followUp.get(5, TimeUnit.SECONDS);
+            Assert.assertEquals(2, values.get(0).get("number").getInt());
+            Assert.assertEquals("Two", values.get(0).get("otherName").getString());
         } finally {
             connection.close().get();
         }
     }
 
 
-
     public void testCanUseProjectedNames() throws Exception {
         Connection connection = connectionManager.connect().get();
 
-        DbFuture<ResultSet> future = connection.executeQuery("SELECT int_val AS number, str_val AS otherName FROM simple_values " +
-                " WHERE str_val LIKE 'Two'");
+        Future<ResultSet> future = connection.executeQuery(
+                "SELECT int_val AS number, str_val AS otherName " +
+                        "FROM simple_values " +
+                        "WHERE str_val LIKE 'Two'");
         try {
             final ResultSet values = future.get(5, TimeUnit.SECONDS);
-            Assert.assertEquals(2,values.get(0).get("number").getInt());
-            Assert.assertEquals("Two",values.get(0).get("otherName").getString());
+            Assert.assertEquals(2, values.get(0).get("number").getInt());
+            Assert.assertEquals("Two", values.get(0).get("otherName").getString());
         } finally {
             connection.close().get();
         }
@@ -252,6 +270,74 @@ public class SelectTest extends AbstractWithConnectionManagerTest {
 
     static String expectedStringFromCallback() {
         return "startFields-field(str_val)-endFields-startResults-startRow-value(Zero)-endRow-endResults".toLowerCase();
+    }
+
+    static class ExceptionOnCall implements ResultHandler<StringBuilder> {
+        int callNo = 0;
+        final int throwOn;
+        boolean didNotFailYet = true;
+        private boolean didThrowOnLast = false;
+
+        public boolean didThrowLastCall() {
+            return didThrowOnLast;
+        }
+
+        public ExceptionOnCall(int throwOn) {
+            this.throwOn = throwOn;
+        }
+
+        @Override
+        public void startFields(StringBuilder accumulator) {
+            failIfRightCall("Expected failure: startFields");
+        }
+
+        @Override
+        public void field(Field field, StringBuilder accumulator) {
+            failIfRightCall("Expected failure: field");
+        }
+
+        @Override
+        public void endFields(StringBuilder accumulator) {
+            failIfRightCall("Expected failure: endFields");
+        }
+
+        @Override
+        public void startResults(StringBuilder accumulator) {
+            failIfRightCall("Expected failure: startResults");
+        }
+
+        @Override
+        public void startRow(StringBuilder accumulator) {
+            failIfRightCall("Expected failure: startRow");
+        }
+
+        @Override
+        public void value(Value value, StringBuilder accumulator) {
+            failIfRightCall("Expected failure: value");
+        }
+
+        @Override
+        public void endRow(StringBuilder accumulator) {
+            failIfRightCall("Expected failure: value");
+        }
+
+        @Override
+        public void endResults(StringBuilder accumulator) {
+            if (didNotFailYet) {
+                didThrowOnLast = true;
+                throw new RuntimeException("Expected failure: endResults, Failure call no " + throwOn);
+            }
+            callNo++;
+        }
+
+        private void failIfRightCall(String message) {
+            if (callNo == throwOn && didNotFailYet) {
+                didNotFailYet = false;
+                throw new RuntimeException(message + ", Failure call no " + throwOn);
+            }
+            callNo++;
+        }
+
     }
 
     static ResultHandler<StringBuilder> buildStringInCallback() {
@@ -296,9 +382,6 @@ public class SelectTest extends AbstractWithConnectionManagerTest {
                 accumulator.append("endResults");
             }
 
-            @Override
-            public void exception(Throwable t, StringBuilder accumulator) {
-            }
         };
     }
 

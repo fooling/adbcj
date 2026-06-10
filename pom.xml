@@ -1,37 +1,31 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>org.adbcj</groupId>
 	<artifactId>adbcj</artifactId>
-	<version>0.7.2-SNAPSHOT</version>
+	<version>0.10-SNAPSHOT</version>
 	<packaging>pom</packaging>
 
 	<name>ADBCJ</name>
 	<description>
-		Asynchronous Database Connectivity in Java is a framework for
-		asynchronous database interaction.
+		Asynchronous Database Connectivity for Java is an library for asynchronous database interaction.
 	</description>
 
-	<url>http://adbcj.org/</url>
+	<url>https://github.com/gamlerhart/adbcj/</url>
 	<inceptionYear>2007</inceptionYear>
 
 	<properties>
 		<slf4j.version>1.7.2</slf4j.version>
-		<netty.version>4.0.6.Final</netty.version>
+		<netty.version>4.1.15.Final</netty.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 	<modules>
 		<module>api</module>
 		<module>jdbc</module>
-		<module>connection-pool</module>
 		<module>mysql</module>
 		<module>h2</module>
 		<module>tck</module>
-        <module>dbcj</module>
-        <module>poolx</module>
     </modules>
 
 	<scm>
@@ -40,20 +34,21 @@
 			scm:git://github.com/gamlerhart/adbcj.git
 		</connection>
 		<developerConnection>
-			git:git@github.com:gamlerhart/adbcj.git
+			scm:git:git@github.com:gamlerhart/adbcj.git
 		</developerConnection>
-	</scm>
+	  <tag>HEAD</tag>
+  </scm>
 
 	<issueManagement>
 		<system>github</system>
 		<url>https://github.com/gamlerhart/adbcj/issues</url>
 	</issueManagement>
-    <distributionManagement>
-        <snapshotRepository>
-            <id>snapshots</id>
-            <url>https://github.com/gamlerhart/gamlor-mvn/tree/master/snapshots</url>
-        </snapshotRepository>
-    </distributionManagement>
+	<distributionManagement>
+		<repository>
+			<id>bintray-gamlor-adbcj-repo</id>
+			<url>https://api.bintray.com/maven/gamlor/adbcj-repo/adbcj/;publish=1</url>
+		</repository>
+	</distributionManagement>
 
 	<licenses>
 		<license>
@@ -72,7 +67,7 @@
 		<developer>
 			<id>rstoffel</id>
 			<name>Roman Stoffel</name>
-			<url>http://www.gamlor.info</url>
+			<url>https://www.gamlor.info</url>
 		</developer>
 	</developers>
 
@@ -84,12 +79,20 @@
 	</mailingLists>
 
 	<build>
+		<extensions>
+			<!-- Enabling the use of SSH -->
+			<extension>
+				<groupId>org.apache.maven.wagon</groupId>
+				<artifactId>wagon-ssh</artifactId>
+				<version>2.12</version>
+			</extension>
+		</extensions>
 		<plugins>
 			<plugin>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<configuration>
-					<source>1.6</source>
-					<target>1.6</target>
+					<source>1.8</source>
+					<target>1.8</target>
 					<debug>true</debug>
                     <encoding>UTF-8</encoding>
 				</configuration>
@@ -98,6 +101,11 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>2.12</version>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-release-plugin</artifactId>
+				<version>2.5.3</version>
 			</plugin>
 			<plugin>
 				<artifactId>maven-assembly-plugin</artifactId>
@@ -126,18 +134,12 @@
                     <!-- <encoding>UTF-8</encoding>-->
                 </configuration>
 			</plugin>
-		</plugins>
-	</build>
-
-	<reporting>
-		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-javadoc-plugin</artifactId>
-				<inherited>false</inherited>
+				<inherited>true</inherited>
 				<configuration>
-					<aggregate>true</aggregate>
-					<breakiterator>true</breakiterator>
+					<additionalparam>-Xdoclint:none</additionalparam>
 					<charset>UTF-8</charset>
 					<docencoding>UTF-8</docencoding>
 					<windowtitle>
@@ -149,31 +151,17 @@
 					<encoding>UTF-8</encoding>
 					<links>
 						<link>
-							http://java.sun.com/javase/6/docs/api/
+							https://docs.oracle.com/javase/8/docs/api/
 						</link>
 						<link>http://www.slf4j.org/api/</link>
 					</links>
 					<locale>en_US</locale>
 				</configuration>
 			</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-jxr-plugin</artifactId>
-				<inherited>false</inherited>
-				<configuration>
-					<aggregate>true</aggregate>
-					<inputEncoding>UTF-8</inputEncoding>
-					<outputEncoding>UTF-8</outputEncoding>
-					<windowTitle>
-						ADBCJ ${project.version} Cross Reference
-					</windowTitle>
-					<docTitle>
-						ADBCJ ${project.version} Cross Reference
-					</docTitle>
-				</configuration>
-			</plugin>
+
 		</plugins>
-	</reporting>
+	</build>
+
 
 	<dependencyManagement>
 		<dependencies>
@@ -207,27 +195,10 @@
 				<groupId>${project.groupId}</groupId>
 				<version>${project.version}</version>
 			</dependency>
-            <dependency>
-                <artifactId>adbcj-poolx</artifactId>
-                <groupId>${project.groupId}</groupId>
-                <version>${project.version}</version>
-            </dependency>
 			<dependency>
 				<artifactId>slf4j-api</artifactId>
 				<groupId>org.slf4j</groupId>
 				<version>${slf4j.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>org.slf4j</groupId>
-                <artifactId>slf4j-simple</artifactId>
-				<version>${slf4j.version}</version>
-				<scope>test</scope>
-			</dependency>
-			<dependency>
-				<groupId>org.slf4j</groupId>
-                <artifactId>slf4j-simple</artifactId>
-				<version>${slf4j.version}</version>
-				<scope>test</scope>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
@@ -236,11 +207,9 @@
 		<dependency>
 			<groupId>org.testng</groupId>
 			<artifactId>testng</artifactId>
-			<version>5.7</version>
+			<version>6.10</version>
 			<scope>test</scope>
-			<classifier>jdk15</classifier>
 		</dependency>
-
 
 	</dependencies>
 

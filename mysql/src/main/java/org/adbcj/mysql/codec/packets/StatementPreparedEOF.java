@@ -4,10 +4,6 @@ import org.adbcj.mysql.codec.MysqlType;
 
 import java.util.List;
 
-/**
- * @author roman.stoffel@gamlor.info
- * @since 12.04.12
- */
 public final class StatementPreparedEOF extends ServerPacket {
 
     private final int handlerId;

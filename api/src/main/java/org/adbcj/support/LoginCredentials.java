@@ -51,9 +51,7 @@ public final class LoginCredentials {
 
         if (!database.equals(that.database)) return false;
         if (password != null ? !password.equals(that.password) : that.password != null) return false;
-        if (!userName.equals(that.userName)) return false;
-
-        return true;
+        return userName.equals(that.userName);
     }
 
     @Override
@@ -66,9 +64,10 @@ public final class LoginCredentials {
 
     @Override
     public String toString() {
+    	// Mask password for security issue sine 2017-10-15 little-pan
         return "LoginCredentials{" +
                 "userName='" + userName + '\'' +
-                ", password='" + password + '\'' +
+                ", password='" + "******" + '\'' +
                 ", database='" + database + '\'' +
                 '}';
     }

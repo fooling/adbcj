@@ -18,7 +18,10 @@
  */
 package org.adbcj.mysql.codec;
 
+import org.adbcj.support.SizeConstants;
+
 import java.io.*;
+import java.nio.charset.Charset;
 import java.util.Calendar;
 import java.util.EnumSet;
 import java.util.Set;
@@ -150,16 +153,16 @@ public final class IoUtils {
         throw new IllegalStateException("Recieved a length value we don't know how to handle");
     }
 
-    public static String readLengthCodedString(InputStream in, String charset) throws IOException {
+    public static String readLengthCodedString(InputStream in, Charset charset) throws IOException {
         return readLengthCodedString(in, safeRead(in), charset);
     }
 
-    public static String readLengthCodedString(InputStream in, int firstByte, String charset) throws IOException {
+    public static String readLengthCodedString(InputStream in, int firstByte, Charset charset) throws IOException {
         long length = readBinaryLengthEncoding(in, firstByte);
         return readFixedLengthString(in, (int) length, charset);
     }
 
-    public static void writeLengthCodedString(OutputStream out, String stringToWrite, String charset) throws IOException {
+    public static void writeLengthCodedString(OutputStream out, String stringToWrite, Charset charset) throws IOException {
         if (stringToWrite == null) {
             out.write(251);
         } else {
@@ -183,6 +186,27 @@ public final class IoUtils {
         }
 
     }
+    public static int writeLengthCodedStringLength(String stringToWrite, Charset charset) {
+        if (stringToWrite == null) {
+            return SizeConstants.CHAR_SIZE;
+        } else {
+            byte[] data = stringToWrite.getBytes(charset);
+            if (data.length > 250) {
+                int length = SizeConstants.BYTE_SIZE + data.length;
+                if (data.length > 0xFFFFFF) {
+                    length += 4;
+                } else if (data.length > 0xFFFF) {
+                    length += 3;
+                } else {
+                    length += 2;
+                }
+                return length;
+            } else {
+                return SizeConstants.BYTE_SIZE + data.length;
+            }
+        }
+
+    }
 
     public static void writeLong(OutputStream out, long value, int length) throws IOException {
         for (int i = 0; i < length; i++) {
@@ -191,21 +215,25 @@ public final class IoUtils {
     }
 
 
-    public static String readNullTerminatedString(BoundedInputStream in, String charset) throws IOException {
+    public static String readNullTerminatedString(BoundedInputStream in, Charset charset) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         if(in.getRemaining()<=0){
             return "";
         }
-        int c = in.read();
-        while (c > 0 && in.getRemaining()>0) {
-            out.write(c);
-            c = in.read();
+        for (int c = in.read(); c > 0; c = in.read()) {
+        	out.write(c);
+            // fixbug: lost the last char issue. The remaining decision should be placed here 
+            //and not in for-condition!
+            // @since 2017-09-01 little-pan
+            if(in.getRemaining() <= 0) {
+            	break;
+            }
         }
         return new String(out.toByteArray(), charset);
 
     }
 
-    public static String readFixedLengthString(InputStream in, int length, String charset) throws IOException {
+    public static String readFixedLengthString(InputStream in, int length, Charset charset) throws IOException {
         if (length == 0) {
             return "";
         }
@@ -263,7 +291,7 @@ public final class IoUtils {
      * Creates a null value bit mask, according to http://forge.mysql.com/wiki/MySQL_Internals_ClientServer_Protocol#Execute_Packet_.28Tentative_Description.29
      */
     public static byte[] nullMask(Object[] arguments) {
-        byte[] nullBitsBuffer = new byte[(arguments.length + 7) / 8];
+        byte[] nullBitsBuffer = new byte[nullMaskSize(arguments)];
         for (int i = 0; i < arguments.length; i++) {
             if (arguments[i] == null) {
                 nullBitsBuffer[i / 8] |= (1 << (i & 7));
@@ -272,13 +300,17 @@ public final class IoUtils {
         return nullBitsBuffer;
     }
 
+    public static int nullMaskSize(Object[] arguments) {
+        return (arguments.length + 7) / 8;
+    }
+
     public static String readDate(BoundedInputStream in) throws IOException {
         int length = in.read();
         if(length<4){
             return String.format("%04d-%02d-%02d %02d:%02d:%02d",0,0,0,0,0,0);
         }
         byte[] data = new byte[length];
-        in.read(data);
+        in.readFully(data);
 
         int year =  ((data[1] & 0xFF) << 8)+ (data[0] & 0xFF);
         int month = (data[2] & 0xFF);

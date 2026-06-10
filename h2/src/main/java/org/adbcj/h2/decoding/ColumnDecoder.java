@@ -1,51 +1,48 @@
 package org.adbcj.h2.decoding;
 
 import io.netty.channel.Channel;
+import org.adbcj.DbCallback;
+import org.adbcj.DbException;
 import org.adbcj.Field;
 import org.adbcj.ResultHandler;
 import org.adbcj.h2.H2Connection;
 import org.adbcj.h2.H2DbException;
-import org.adbcj.support.DefaultDbFuture;
 import org.adbcj.support.DefaultField;
 
 import java.io.DataInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.adbcj.h2.decoding.IoUtils.*;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
-public class ColumnDecoder<T>  implements DecoderState {
+
+public class ColumnDecoder<T> implements DecoderState {
     private final ResultHandler<T> eventHandler;
     private final T accumulator;
-    private final DefaultDbFuture<T> resultFuture;
+    private final DbCallback<T> callback;
     private final H2Connection connection;
     private final int rows;
     private final int columnsAvailable;
     private final List<Field> columnsBuildUp;
+    private final StackTraceElement[] entry;
+    private DbException failure;
 
-    public ColumnDecoder(ResultHandler<T> eventHandler,
-                          T accumulator,
-                          DefaultDbFuture<T> resultFuture,
-                          H2Connection connection,
-                          int rows,
-                          int columnsAvailable){
-        this(eventHandler, accumulator, resultFuture,connection, rows, columnsAvailable, new ArrayList<Field>());
-    }
 
-    private ColumnDecoder(ResultHandler<T> eventHandler,
-                         T accumulator,
-                         DefaultDbFuture<T> resultFuture,
-                         H2Connection connection,
-                         int rows,
-                         int columnsAvailable,
-                         List<Field> columnsBuildUp) {
+    public ColumnDecoder(
+            H2Connection connection,
+            ResultHandler<T> eventHandler,
+            T accumulator,
+            DbException failure,
+            DbCallback<T> callback,
+            StackTraceElement[] entry,
+            int rows,
+            int columnsAvailable,
+            List<Field> columnsBuildUp) {
         this.eventHandler = eventHandler;
         this.accumulator = accumulator;
-        this.resultFuture = resultFuture;
+        this.failure = failure;
+        this.callback = callback;
+        this.entry = entry;
         this.connection = connection;
         this.rows = rows;
         this.columnsAvailable = columnsAvailable;
@@ -65,7 +62,7 @@ public class ColumnDecoder<T>  implements DecoderState {
         ResultOrWait<Boolean> autoIncrement = tryReadNextBoolean(stream, displaySize);
         ResultOrWait<Integer> nullable = tryReadNextInt(stream, autoIncrement);
 
-        if(nullable.couldReadResult){
+        if (nullable.couldReadResult) {
             final DefaultField field = new DefaultField(columnsBuildUp.size(),
                     "",
                     schemaName.result,
@@ -82,46 +79,51 @@ public class ColumnDecoder<T>  implements DecoderState {
                     1 == nullable.result,
                     true, true, "");
 
-            eventHandler.field(field,accumulator );
-            columnsBuildUp.add(field);
-            if((columnsBuildUp.size())==columnsAvailable){
-                eventHandler.endFields(accumulator);
-                return goToRowParsing();
-            } else{
-                return ResultAndState.newState(
-                        new ColumnDecoder<T>(eventHandler,
-                                accumulator,
-                                resultFuture,
-                                connection,
-                                rows,
-                                columnsAvailable,
-                                columnsBuildUp));
+            try{
+                eventHandler.field(field, accumulator);
+            } catch (Exception any){
+                failure = DbException.attachSuppressedOrWrap(any, entry, failure);
             }
-        } else{
+            columnsBuildUp.add(field);
+            if ((columnsBuildUp.size()) == columnsAvailable) {
+                try{
+                    eventHandler.endFields(accumulator);
+                } catch (Exception any){
+                    failure = DbException.attachSuppressedOrWrap(any, entry, failure);
+                }
+                return goToRowParsing();
+            } else {
+                return ResultAndState.newState(this);
+            }
+        } else {
             return ResultAndState.waitForMoreInput(this);
         }
     }
 
     @Override
     public ResultAndState handleException(H2DbException exception) {
-        resultFuture.trySetException(exception);
-        return ResultAndState.newState(new AnswerNextRequest(connection));
+        callback.onComplete(null, exception);
+        return ResultAndState.newState(new AnswerNextRequest(connection, entry));
     }
 
     private ResultAndState goToRowParsing() {
-        if(rows==0){
+        if (rows == 0) {
             eventHandler.startResults(accumulator);
             eventHandler.endResults(accumulator);
-            resultFuture.trySetResult(accumulator);
-            return ResultAndState.newState(new AnswerNextRequest(connection));
-        } else{
+            callback.onComplete(accumulator, null);
+            return ResultAndState.newState(new AnswerNextRequest(connection, entry));
+        } else {
             return ResultAndState.newState(
-                    new RowDecoder<T>(eventHandler,
-                            accumulator,
-                            resultFuture,
+                    new RowDecoder<T>(
                             connection,
+                            eventHandler,
+                            accumulator,
+                            failure,
+                            callback,
+                            entry,
                             columnsBuildUp,
-                            rows)
+                            rows,
+                            0)
             );
 
         }

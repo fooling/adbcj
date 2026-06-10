@@ -36,7 +36,7 @@ public interface Value {
 
 	/**
 	 * Returns the value as a {@code boolean}.  If the value is {@code null}, returns false.  If the value is a numeric
-	 * type, return {@code true} if the the value is not 0.  Otherwise, returns {@true} if the value as a
+	 * type, return {@code true} if the the value is not 0.  Otherwise, returns true if the value as a
 	 * {@code String} is {@code "true"}.
 	 *
 	 * @return  the value as a boolean.

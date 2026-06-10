@@ -1,0 +1,4 @@
+CREATE DATABASE adbcjtck;
+
+CREATE USER 'adbcjtck'@'%' IDENTIFIED BY 'adbcjtck';
+GRANT ALL PRIVILEGES ON *.* TO 'adbcjtck'@'%' WITH GRANT OPTION;

@@ -2,9 +2,7 @@ package org.adbcj.h2;
 
 import io.netty.channel.*;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 class Handler  extends SimpleChannelInboundHandler<Object> {
     public Handler() {
         //To change body of created methods use File | Settings | File Templates.

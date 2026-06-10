@@ -19,7 +19,6 @@
 package org.adbcj.mysql.codec.packets;
 
 import org.adbcj.mysql.codec.*;
-import org.adbcj.support.CancellationToken;
 import org.adbcj.support.LoginCredentials;
 
 import java.io.IOException;
@@ -47,7 +46,7 @@ public class LoginRequest extends ClientRequest {
                         Set<ExtendedClientCapabilities> extendedCapabilities,
                         MysqlCharacterSet charset,
                         byte[] salt) {
-        super(CancellationToken.NO_CANCELLATION);
+        super();
         this.credentials = credentials;
 		this.capabilities = capabilities;
 		this.extendedCapabilities = extendedCapabilities;

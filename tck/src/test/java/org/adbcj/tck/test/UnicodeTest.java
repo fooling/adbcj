@@ -6,10 +6,7 @@ import org.adbcj.ResultSet;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * @author roman.stoffel@gamlor.info
- * @since 10.05.12
- */
+
 public class UnicodeTest extends AbstractWithConnectionManagerTest{
 
     @Test

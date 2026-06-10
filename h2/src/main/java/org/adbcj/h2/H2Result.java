@@ -5,9 +5,7 @@ import org.adbcj.support.DefaultResult;
 
 import java.util.List;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class H2Result extends DefaultResult {
     private final ResultSet result;
 

@@ -1,8 +1,6 @@
 package org.adbcj;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public enum CloseMode {
     /**
      * Closes when pending operations have completed. All enqueued requests will be finished, before the resource is closed.
@@ -14,5 +12,11 @@ public enum CloseMode {
      * Cancels all pending requests and the closes the resource.
      * No new requests / commands will be accepted.
      */
-    CANCEL_PENDING_OPERATIONS;
+    CANCEL_PENDING_OPERATIONS,
+	/**
+     * Cancels all pending requests and then closes the resource forcibly even if using connection pool.
+     * No new requests / commands will be accepted.
+     * @since 2017-09-02 little-pan
+     */
+    CLOSE_FORCIBLY;
 }

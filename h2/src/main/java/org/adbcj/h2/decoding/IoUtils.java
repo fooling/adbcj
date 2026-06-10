@@ -1,15 +1,13 @@
 package org.adbcj.h2.decoding;
 
-import org.adbcj.h2.packets.SizeConstants;
+import org.adbcj.support.SizeConstants;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public final class IoUtils {
     private IoUtils(){}
 
@@ -18,7 +16,6 @@ public final class IoUtils {
      * Write a string. The maximum string length is Integer.MAX_VALUE.
      *
      * @param theString the value
-     * @return itself
      */
     public static void writeString(DataOutputStream out,String theString) throws IOException {
         if (theString == null) {
@@ -42,7 +39,6 @@ public final class IoUtils {
      * Write a byte array.
      *
      * @param data the value
-     * @return itself
      */
     public static void writeBytes(DataOutputStream out,byte[] data) throws IOException {
         if (data == null) {

@@ -30,7 +30,7 @@ import static org.testng.Assert.assertNotNull;
 public class UpdateTest extends AbstractWithConnectionManagerTest{
 
 
-	public void testSimpleUpdates() throws InterruptedException {
+	public void testSimpleUpdates() throws Exception {
 		Connection connection = connectionManager.connect().get();
 		assertNotNull(connection);
 

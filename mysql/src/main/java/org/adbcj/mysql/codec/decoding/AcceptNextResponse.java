@@ -1,15 +1,13 @@
 package org.adbcj.mysql.codec.decoding;
 
 import org.adbcj.mysql.codec.BoundedInputStream;
-import org.adbcj.mysql.codec.MySqlConnection;
+import org.adbcj.mysql.MySqlConnection;
 import org.adbcj.mysql.codec.MySqlRequest;
 import io.netty.channel.Channel;
 
 import java.io.IOException;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class AcceptNextResponse extends DecoderState {
     private final MySqlConnection connection;
 
@@ -23,6 +21,6 @@ public class AcceptNextResponse extends DecoderState {
         if(logger.isDebugEnabled()){
             logger.debug("Start parsing request: {}",request);
         }
-        return request.getDecoderState().parse(length, packetNumber, in, channel);
+        return request.startState.parse(length, packetNumber, in, channel);
     }
 }

@@ -6,10 +6,7 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.Properties;
 
-/**
- * @author roman.stoffel@gamlor.info
- * @since 26.04.12
- */
+
 public final class PlainJDBCConnection implements JDBCConnectionProvider {
 
     private static final String USER = "user";
@@ -30,7 +27,17 @@ public final class PlainJDBCConnection implements JDBCConnectionProvider {
     }
 
     @Override
-    public Connection getConnection() throws SQLException {
+    public Connection getConnection() throws SQLException{
         return DriverManager.getConnection(jdbcUrl, properties);
+
+    }
+
+    @Override
+    public Connection getConnection(String user,String password) throws SQLException {
+        Properties withUsername = new Properties(properties);
+
+        withUsername.put(USER, user);
+        withUsername.put(PASSWORD, password);
+        return DriverManager.getConnection(jdbcUrl, withUsername);
     }
 }

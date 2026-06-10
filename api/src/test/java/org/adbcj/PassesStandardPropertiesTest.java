@@ -5,9 +5,7 @@ import org.testng.annotations.Test;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * @author roman.stoffel@gamlor.info
- */
+
 public class PassesStandardPropertiesTest {
 
     @Test
